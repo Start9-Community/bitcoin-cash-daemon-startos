@@ -23,10 +23,11 @@ const deleteSpec = InputSpec.of({
 })
 
 function pathsFor(network: 'testnet3' | 'testnet4' | 'chipnet' | 'regtest') {
-  return [
-    `${rootDir}/${network}`,
-    `${rootDir}/logs/${network}`,
-  ]
+  // All of a network's data (blocks_ffldb, UTXO metadata, peers.json, indexes)
+  // lives under this single per-network directory. Logs are written to the
+  // container-ephemeral --logdir, not the data volume, so there is nothing to
+  // delete there.
+  return [`${rootDir}/${network}`]
 }
 
 export const deleteTestNetworkData = sdk.Action.withInput(

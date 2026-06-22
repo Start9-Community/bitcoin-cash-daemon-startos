@@ -22,9 +22,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
   const torEnabled = store?.torEnabled ?? true
 
   const grpcEnabled = (conf?.grpclisten ?? '') !== ''
-  const onlynetList = ((conf?.onlynet as string[] | undefined) ?? []).filter(Boolean)
-  const onlynetActive = onlynetList.length > 0
-  const onionOnly = onlynetActive && onlynetList.every((n) => n === 'onion')
+  const onionOnly = store?.onionOnly ?? false
   const externalip = (store?.externalip ?? []).filter(Boolean)
 
   // Read and clear reindex flags
@@ -77,11 +75,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   if (netFlag) {
     bchdArgs.push(netFlag)
-  }
-
-  // Apply onlynet restrictions only when explicitly narrowed from default-all.
-  for (const net of onlynetList) {
-    bchdArgs.push(`--onlynet=${net}`)
   }
 
   for (const ip of externalip) {
@@ -246,11 +239,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
     }
   }
 
-  const excludedByOnlynet = () => ({
-    result: 'disabled' as const,
-    message: 'Excluded by onlynet',
-  })
-
   return sdk.Daemons.of(effects)
     .addOneshot('nocow', {
       subcontainer: null,
@@ -342,25 +330,30 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // (Per-index rebuild progress is emitted from the primary daemon's
           // ready poll, which runs during the catch-up while RPC is down.)
 
-          // Mirrors the BCHN reference: read getblockchaininfo and use the node's
-          // own initialblockdownload flag as the source of truth. BCHD omits
-          // initialblockdownload (omitempty) when synced, so absent = synced.
+          // BCHD's getblockchaininfo exposes `syncheight` — the best block height
+          // advertised by peers. The node is synced once it has caught up to that
+          // height. Do NOT use initialblockdownload: BCHD omits it (omitempty)
+          // well before the chain tip — it reads false at ~20% of IBD — so the
+          // "absent = synced" assumption falsely reports Synced mid-sync.
           try {
             const res = await rpcWithRetry('getblockchaininfo')
             if (res.exitCode !== 0)
               return { message: 'Waiting for sync info', result: 'loading' }
             const info = JSON.parse(res.stdout.toString()) as {
               blocks: number
-              initialblockdownload?: boolean
-              verificationprogress?: number
+              syncheight?: number
               pruned?: boolean
             }
-            if (info.initialblockdownload) {
-              const pct = ((info.verificationprogress ?? 0) * 100).toFixed(2)
-              return { message: `Syncing blocks... ${pct}% (${netLabel})`, result: 'loading' }
+            const blocks = info.blocks ?? 0
+            const syncHeight = info.syncheight ?? 0
+            if (syncHeight <= 0)
+              return { message: 'Waiting for peers...', result: 'loading' }
+            if (blocks < syncHeight) {
+              const pct = ((blocks / syncHeight) * 100).toFixed(2)
+              return { message: `Syncing blocks... ${pct}% (${blocks}/${syncHeight}) (${netLabel})`, result: 'loading' }
             }
             return {
-              message: `Synced — block ${info.blocks}${info.pruned ? ' (pruned)' : ''} (${netLabel})`,
+              message: `Synced — block ${blocks}${info.pruned ? ' (pruned)' : ''} (${netLabel})`,
               result: 'success',
             }
           } catch {
@@ -446,15 +439,13 @@ export const main = sdk.setupMain(async ({ effects }) => {
         display: 'Tor',
         fn: () => {
           if (onionOnly && !torEnabled)
-            return { result: 'failure' as const, message: 'Invalid config: onlynet=onion requires Tor routing enabled' }
+            return { result: 'failure' as const, message: 'Invalid config: Onion-Only Mode requires Tor Routing enabled' }
           if (!torEnabled)
             return { result: 'disabled' as const, message: 'Tor proxy is disabled in config' }
           if (!torIp)
             return { result: 'disabled' as const, message: 'Tor is not installed' }
           if (!torRunning)
             return { result: 'disabled' as const, message: 'Tor is not running' }
-          if (onlynetActive && !onlynetList.includes('onion'))
-            return excludedByOnlynet()
           return {
             result: 'success' as const,
             message: externalip.some((ip) => ip.includes('.onion'))
@@ -469,22 +460,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
       },
       requires: [],
     })
-    .addHealthCheck('i2p', {
-      ready: {
-        display: 'I2P',
-        fn: () => ({
-          result: 'disabled' as const,
-          message: 'I2P support is not implemented yet.',
-        }),
-      },
-      requires: [],
-    })
     .addHealthCheck('clearnet', {
       ready: {
         display: 'Clearnet',
         fn: () => {
-          if (onlynetActive && !onlynetList.includes('ipv4') && !onlynetList.includes('ipv6'))
-            return excludedByOnlynet()
+          if (onionOnly)
+            return { result: 'disabled' as const, message: 'Clearnet disabled — Onion-Only Mode routes all traffic through Tor' }
           return {
             result: 'success' as const,
             message: externalip.some((ip) => ip && !ip.includes('.onion'))

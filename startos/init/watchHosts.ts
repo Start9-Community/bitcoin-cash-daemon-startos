@@ -1,4 +1,3 @@
-import { bchdConf } from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 import { sdk } from '../sdk'
 import { peerInterfaceId } from '../utils'
@@ -13,12 +12,7 @@ const toHostPort = (h: { hostname: string; port: number | null }): string => {
 export const watchHosts = sdk.setupOnInit(async (effects) => {
   const store = await storeJson.read().const(effects)
   const advertiseClearnetInbound = !!store?.advertiseClearnetInbound
-
-  const conf = await bchdConf.read().const(effects)
-  const onlynetList: string[] = ((conf?.onlynet as string[] | undefined) ?? []).filter(Boolean)
-  const onlynetActive = onlynetList.length > 0
-  const allowIpv4 = !onlynetActive || onlynetList.includes('ipv4')
-  const allowIpv6 = !onlynetActive || onlynetList.includes('ipv6')
+  const onionOnly = !!store?.onionOnly
 
   const publicInfo = await sdk.serviceInterface
     .getOwn(effects, peerInterfaceId, (i) =>
@@ -39,28 +33,20 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
     })
     .format('hostname-info')
     .map(toHostPort)
-
   externalip.push(...onions)
 
-  if (advertiseClearnetInbound) {
-    if (allowIpv4) {
-      const ipv4s = publicInfo
-        .filter({ kind: 'ipv4' })
-        .format('hostname-info')
-        .map(toHostPort)
-      externalip.push(...ipv4s)
-    }
-    if (allowIpv6) {
-      const ipv6s = publicInfo
-        .filter({ kind: 'ipv6' })
-        .format('hostname-info')
-        .map(toHostPort)
-      externalip.push(...ipv6s)
-    }
+  // Onion-Only Mode routes everything through Tor — never advertise clearnet.
+  if (advertiseClearnetInbound && !onionOnly) {
+    const ipv4s = publicInfo
+      .filter({ kind: 'ipv4' })
+      .format('hostname-info')
+      .map(toHostPort)
+    const ipv6s = publicInfo
+      .filter({ kind: 'ipv6' })
+      .format('hostname-info')
+      .map(toHostPort)
+    externalip.push(...ipv4s, ...ipv6s)
   }
 
-  await storeJson.merge(
-    effects,
-    { externalip },
-  )
+  await storeJson.merge(effects, { externalip })
 })

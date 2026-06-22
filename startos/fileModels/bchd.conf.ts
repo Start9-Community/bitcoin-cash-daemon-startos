@@ -16,18 +16,6 @@ const ini01 = z.union([
     return t === '1' || t === 'true' ? 1 : 0
   }),
 ])
-const iniStringArray = z
-  .union([z.array(z.string()), z.string().transform((s) => [s])])
-  .optional()
-  .catch(undefined)
-
-export const ONLYNET_VALUES = {
-  ipv4: 'IPv4',
-  ipv6: 'IPv6',
-  onion: 'Tor (.onion)',
-} as const
-export type OnlynetKey = keyof typeof ONLYNET_VALUES
-export const ALL_ONLYNETS = Object.keys(ONLYNET_VALUES) as OnlynetKey[]
 
 export const shape = z.object({
   txindex: ini01.catch(1),
@@ -44,7 +32,6 @@ export const shape = z.object({
   utxocachemaxsize: iniNumber.catch(1024),
   dbflushinterval: iniNumber.catch(1800),
   maxpeers: iniNumber.catch(125),
-  onlynet: iniStringArray,
   excessiveblocksize: iniNumber.catch(32000000),
   minrelaytxfee: z.union([z.string().transform(Number), z.number()]).catch(0.00001),
 })
@@ -142,19 +129,10 @@ export const fullConfigSpec = sdk.InputSpec.of({
     integer: true,
     units: null,
   }),
-  onlynet: sdk.Value.multiselect({
-    name: 'Allowed Networks',
-    description:
-      'Restrict outbound peer connections to selected network types. Leave all selected to allow all networks.',
-    default: ALL_ONLYNETS,
-    values: ONLYNET_VALUES,
-    minLength: 1,
-    maxLength: null,
-  }),
   onionOnly: sdk.Value.toggle({
     name: 'Onion-Only Mode',
     description:
-      'Force peer connections to Tor only (equivalent to onlynet=onion). Disabled by default so Tor and clearnet can coexist.',
+      'Route all peer connections through Tor only, with no clearnet (BCHD --proxy). Requires Tor Routing. Disabled by default so Tor and clearnet can coexist.',
     default: false,
   }),
   peerbloomfilters: sdk.Value.toggle({
@@ -185,7 +163,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   advertiseClearnetInbound: sdk.Value.toggle({
     name: 'Advertise Clearnet Inbound',
     description:
-      'Publish your public IPv4 and IPv6 clearnet endpoints for inbound peers. Respects the Allowed Networks setting — a network excluded by onlynet (or by Onion-Only Mode) is never advertised. Disabled by default for privacy.',
+      'Publish your public IPv4 and IPv6 clearnet endpoints for inbound peers. Onion-Only Mode overrides this — clearnet is never advertised when all traffic is routed through Tor. Disabled by default for privacy.',
     default: false,
   }),
   excessiveblocksize: sdk.Value.number({

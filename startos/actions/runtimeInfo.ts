@@ -17,9 +17,7 @@ type BchdInfo = {
 
 type BchdBlockchainInfo = {
   blocks?: number
-  headers?: number
-  verificationprogress?: number
-  initialblockdownload?: boolean
+  syncheight?: number
   pruned?: boolean
 }
 
@@ -60,7 +58,7 @@ export const runtimeInfo = sdk.Action.withoutInput(
           `--rpcserver=127.0.0.1:${rpcPort}`,
           `--rpcuser=${rpcUser}`,
           `--rpcpass=${rpcPassword}`,
-          '--notls',
+          `--rpccert=${rootDir}/rpc.cert`,
         ]
 
         const [infoRes, chainRes, peersRes] = await Promise.all([
@@ -92,10 +90,14 @@ export const runtimeInfo = sdk.Action.withoutInput(
           lines.push(`Connections: ${info.connections}`)
         }
         if (chain) {
+          const blocks = chain.blocks ?? 0
+          const syncHeight = chain.syncheight ?? 0
+          const synced = syncHeight > 0 && blocks >= syncHeight
           lines.push(`Chain: ${chain.pruned ? 'pruned' : 'archival'} ${network}`)
-          lines.push(`Blocks: ${chain.blocks ?? '?'} / ${chain.headers ?? '?'}`)
-          const vp = chain.verificationprogress ?? 0
-          lines.push(`Sync: ${chain.initialblockdownload ? `${(vp * 100).toFixed(2)}%` : 'Complete'}`)
+          lines.push(`Blocks: ${blocks}${syncHeight > 0 ? ` / ${syncHeight}` : ''}`)
+          lines.push(
+            `Sync: ${synced ? 'Complete' : syncHeight > 0 ? `${((blocks / syncHeight) * 100).toFixed(2)}%` : 'starting'}`,
+          )
         }
 
         return {

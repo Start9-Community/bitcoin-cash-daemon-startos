@@ -3,9 +3,11 @@
   <h1>Bitcoin Cash Daemon (BCHD)</h1>
 </div>
 
-> **Upstream docs:** [github.com/gcash/bchd](https://github.com/gcash/bchd)
+> **Upstream:** [github.com/gcash/bchd](https://github.com/gcash/bchd)
 >
-> BCHD is a full node implementation of the Bitcoin Cash protocol written in Go. It provides JSON-RPC, gRPC with pub/sub notifications, BIP 157/158 compact block filters (Neutrino), BIP 37 bloom filters, full transaction and address indexes, and Tor support for private peer connections.
+> BCHD is a full-node implementation of the Bitcoin Cash protocol written in Go. It provides a JSON-RPC API, a gRPC API with pub/sub notifications, BIP 157/158 compact block filters (Neutrino), BIP 37 bloom filters, full transaction and address indexes, and Tor support for private peer connections.
+
+This is the technical reference for the StartOS package (for developers and AI assistants). End-user docs live in [`instructions.md`](instructions.md).
 
 ---
 
@@ -23,9 +25,6 @@
 10. [Dependencies](#10-dependencies)
 11. [Default Overrides](#11-default-overrides)
 12. [Limitations and Differences](#12-limitations-and-differences)
-13. [What Is Unchanged from Upstream](#13-what-is-unchanged-from-upstream)
-14. [Contributing](#14-contributing)
-15. [Quick Reference for AI Consumers](#15-quick-reference-for-ai-consumers)
 
 ---
 
@@ -34,43 +33,40 @@
 | Field | Value |
 |---|---|
 | **Image ID** | `bchd` |
-| **Build** | Docker build from `Dockerfile.binary` (pulls pre-built `bchd` binary from GHCR) |
-| **Architectures** | `x86_64`, `aarch64`, `riscv64` |
-| **Command** | `bchd --configfile=/data/bchd.conf --datadir=/data --rpclisten=0.0.0.0:PORT --listen=0.0.0.0:PORT ...` |
-| **Sidecar** | `stunnel4` in a second SubContainer — accepts plaintext RPC on port 8334, forwards to BCHD TLS RPC on 8332 |
+| **Build** | `Dockerfile` — multi-stage. Stage 1 compiles `bchd`, `bchctl`, and `gencerts` from the pinned `gcash/bchd` source tag (`ARG BCHD_VERSION`) with the upgrade9 `getblocktemplate` patch applied (`patches/`). Stage 2 is a `debian:stable-slim` runtime with `stunnel4`, `e2fsprogs`, `netcat-openbsd`, and `ca-certificates`. |
+| **Architectures** | `x86_64`, `aarch64` |
+| **Subcontainers** | `node-sub` runs `bchd`. `stunnel-sub` runs a `stunnel4` plaintext→TLS RPC proxy (see §6). Both mount the `main` volume at `/data` and share a network namespace (loopback). |
 
 ---
 
 ## 2. Volume and Data Layout
 
-| Volume Name | Mount Point | Purpose |
+| Volume | Mount Point | Purpose |
 |---|---|---|
-| `main` | `/data` | All node data: blockchain, chainstate, configuration, credentials |
+| `main` | `/data` | All node data, configuration, and credentials |
 
-**StartOS-managed files inside `/data`:**
+BCHD is launched with `--datadir=/data` and `--configfile=/data/bchd.conf` (the default `--logdir` is left at `/root/.bchd/logs`, which is container-ephemeral). On-disk layout:
 
-| File / Directory | Managed By | Purpose |
+| Path | Managed By | Purpose |
 |---|---|---|
-| `bchd.conf` | StartOS SDK file model | Main BCHD configuration file |
-| `store.json` | StartOS SDK file model | Package state: network, credentials, reindex flags, `fullySynced` |
-| `rpc.cert` / `rpc.key` | `gencerts` oneshot on first start | Self-signed TLS certificate for RPC and gRPC |
-| `blocks/` | BCHD | Raw block data |
-| `chainstate/` | BCHD | UTXO set (derived from blocks) |
-| `peers.json` | BCHD | Cached peer addresses |
+| `/data/bchd.conf` | StartOS SDK file model | BCHD configuration file |
+| `/data/store.json` | StartOS SDK file model | Package state: network, RPC credential, Tor/onion flags, reindex flags, sync state |
+| `/data/rpc.cert`, `/data/rpc.key` | `gencerts` (nocow oneshot) | Self-signed TLS certificate for RPC and gRPC |
+| `/data/<network>/blocks_ffldb/` | BCHD | Block files and UTXO/chainstate metadata (per network: `mainnet`, `testnet3`, `testnet4`, `chipnet`, `regtest`) |
+| `/data/<network>/peers.json` | BCHD | Cached peer addresses for that network |
 
 ---
 
 ## 3. Installation and First-Run Flow
 
-1. StartOS builds or pulls the `bchd` container image.
-2. The `nocow` oneshot runs: creates `/data`, applies NoCOW filesystem attribute (`chattr +C`) for performance on btrfs, then calls `gencerts` to generate `rpc.cert`/`rpc.key` if absent.
-3. Any legacy `externalip[]=` lines are stripped from `bchd.conf` (BCHD rejects them at config parse; external IPs are now passed via CLI from `store.json`).
-4. Seed files are written: `bchd.conf` and `store.json` with defaults (network: mainnet, auto-generated RPC credentials).
-5. BCHD launches, connecting to the Bitcoin Cash mainnet P2P network and beginning Initial Block Download (IBD).
-6. The `stunnel4` sidecar starts in parallel, providing a plaintext RPC proxy on port 8334 for ckpool-lineage mining pool software.
-7. The Blockchain Sync health check reports progress during IBD.
-8. After IBD completes, `store.json` is updated with `fullySynced: true`; Tor proxy routing activates (if installed and configured).
-9. The `watchHosts` process monitors StartOS-assigned external addresses and passes them to BCHD as `--externalip` arguments.
+1. StartOS builds the `bchd` image.
+2. The `nocow` oneshot creates `/data`, applies the NoCOW attribute (`chattr +C`) for btrfs sequential-write performance, then runs `gencerts` to create `rpc.cert`/`rpc.key` if absent. It also strips any legacy `externalip[]=` lines from `bchd.conf` (BCHD passes external IPs via CLI).
+3. On first install only, `seedFiles` generates a random RPC password and seeds `store.json` (network `mainnet`, a `Default` RPC credential) and `bchd.conf` with schema defaults.
+4. The `primary` daemon launches `bchd`; its `ready` check polls `bchctl getinfo` over TLS.
+5. The `stunnel-sub` plaintext RPC proxy starts in parallel.
+6. BCHD begins Initial Block Download (IBD).
+7. After sync completes, `store.json` is updated with `fullySynced: true`.
+8. `watchHosts` records StartOS-assigned external addresses (onion always; clearnet when **Advertise Clearnet Inbound** is on and not in Onion-Only Mode) into `store.json`, which `main.ts` passes to BCHD as `--externalip`.
 
 ---
 
@@ -78,126 +74,89 @@
 
 | Transport | Default | Inbound | How to Change |
 |---|---|---|---|
-| **Clearnet (IPv4/IPv6)** | Enabled — outbound only until an external IP is published | Enabled automatically when StartOS assigns an external IP | Automatic via StartOS host discovery (`watchHosts`) |
-| **Tor** | Enabled (proxy is deferred until IBD completes for sync speed) | Enabled once a `.onion` address is advertised via `externalip` | Toggle in Network Settings action; requires Tor package installed |
-| **I2P** | Not implemented | Not available | Not available |
+| **Clearnet (IPv4/IPv6)** | Enabled — outbound; inbound only once an external IP is advertised | Set **Advertise Clearnet Inbound** in RPC & Peers Settings | Automatic via StartOS host discovery (`watchHosts`) |
+| **Tor** | **Tor Routing** on by default — outbound is routed through Tor when the Tor package is installed and running | Once a `.onion` address is provisioned for the Peer interface | Toggle **Tor Routing** / **Onion-Only Mode** in RPC & Peers Settings |
+| **I2P** | Not supported by `gcash/bchd` | — | — |
 
 ---
 
 ## 5. Configuration Management
 
-| Group | Settings Covered |
+Configuration is split into grouped actions that read/write `bchd.conf` (via an SDK file model) and `store.json`. BCHD reads `bchd.conf`; some settings are also (or only) passed as CLI flags by `main.ts`.
+
+| Action (group: Configuration) | Settings |
 |---|---|
-| **Chain Network** | Network selection: mainnet, testnet3, chipnet, regtest — RPC/P2P/gRPC ports auto-adjust on restart |
-| **Node Settings** | Transaction index, address index, pruning depth, gRPC API toggle, BIP 37 bloom filters, BIP 157/158 compact block filters, database cache size, DB flush interval |
-| **RPC Peers Settings** | Whitelist of IPs / subnets permitted to connect to the RPC interface |
-| **Mempool Settings** | Mempool size limit, minimum relay fee, and related policy |
+| **Chain Network** | Network selection: `mainnet`, `testnet3`, `testnet4`, `chipnet`, `regtest`. Ports auto-adjust; switching restarts BCHD. |
+| **Node Settings** | Transaction Index, Address Index, Fast Sync, Prune Depth, gRPC API toggle, BIP 37 bloom filters, BIP 157/158 compact filters, Database Cache, UTXO Cache, DB Flush Interval. |
+| **RPC & Peers Settings** | Max Peers, Onion-Only Mode, Advertise Clearnet Inbound, Tor Routing, Tor Stream Isolation. |
+| **Mempool & Block Policy** | Excessive Block Size, Minimum Relay Fee. |
+
+> **Index/Sync interlocks:** Pruning and Fast Sync are each incompatible with the transaction/address indexes. Enabling Prune or Fast Sync forces `txindex`/`addrindex` off. Once Fast Sync has been used on a data directory, the transaction index is permanently unavailable until the chain is deleted (Maintenance → Delete Mainnet Data) and re-synced from genesis.
 
 ---
 
 ## 6. Network Access and Interfaces
 
-| Interface | Port | Protocol | Purpose | Condition |
+BCHD's RPC and gRPC servers serve **native TLS** using the self-signed `rpc.cert` (BCHD warns against `--notls` when binding to non-loopback addresses, which StartOS requires). Those interfaces are declared as pass-through TLS so StartOS forwards raw TLS and hands clients `https://` URLs.
+
+| Interface | id | Mainnet Port | Protocol | Condition |
 |---|---|---|---|---|
-| RPC Interface | 8332 | HTTPS (TLS pass-through) | JSON-RPC API for wallets, tools, and dependent packages | Always — mainnet |
-| RPC Plaintext Proxy | 8334 | HTTP | Plaintext JSON-RPC via stunnel for ckpool-lineage miners | Always |
-| Peer Interface | 8333 | TCP | P2P Bitcoin Cash network connections | Always — mainnet |
-| gRPC Interface | 8335 | HTTPS (TLS pass-through) | BCHD gRPC API — compact filters, pub/sub notifications | Only when `grpclisten` is enabled in Node Settings |
-| RPC / Peer (testnet3) | 18332 / 18333 | HTTPS / TCP | Testnet3 | When network = testnet3 |
-| gRPC (testnet3) | 18335 | HTTPS | gRPC on testnet3 | When network = testnet3 and gRPC enabled |
-| RPC / Peer (chipnet) | 48334 / 48333 | HTTPS / TCP | Chipnet | When network = chipnet |
-| gRPC (chipnet) | 48335 | HTTPS | gRPC on chipnet | When network = chipnet and gRPC enabled |
-| RPC / Peer (regtest) | 18444 / 18445 | HTTPS / TCP | Regtest | When network = regtest |
-| gRPC (regtest) | 18446 | HTTPS | gRPC on regtest | When network = regtest and gRPC enabled |
+| RPC Interface | `rpc` | 8332 | HTTPS (TLS pass-through) | Always |
+| Peer Interface | `peer` | 8333 | TCP (P2P) | Always |
+| RPC Plaintext Proxy | `rpc-plaintext` | 8334 | HTTP | Always |
+| gRPC Interface | `grpc` | 8335 | HTTPS (TLS pass-through) | When gRPC is enabled in Node Settings |
+
+**Per-network ports** (`rpc` / `peer` / `grpc`): mainnet `8332/8333/8335`, testnet3 `18332/18333/18335`, testnet4 `28332/28333/28335`, chipnet `48334/48333/48335`, regtest `18444/18445/18446`. The plaintext proxy is always `8334`.
+
+> **RPC Plaintext Proxy:** ckpool-lineage mining software (asicseer-pool, ckpool) has no TLS library. The `stunnel-sub` sidecar accepts plaintext JSON-RPC on `8334` and forwards it over TLS to BCHD's RPC on loopback `8332`. If/when that software gains TLS support, this sidecar and interface can be removed in a single commit.
 
 ---
 
 ## 7. Actions (StartOS UI)
 
-### Info
-
-| Action ID | Name | Description |
-|---|---|---|
-| `runtime-info` | Node Info | Displays version, protocol version, relay fee, peer count, chain, sync progress via `bchctl getinfo` / `getblockchaininfo` / `getpeerinfo` |
-
-### Configuration
-
-| Action ID | Name | Description |
-|---|---|---|
-| `network-settings` | Chain Network | Select BCH network (mainnet / testnet3 / chipnet / regtest); all ports auto-adjust on restart |
-| `node-settings` | Node Settings | Transaction index, pruning, gRPC toggle, bloom filters, compact filters, DB cache, DB flush interval |
-| `rpc-peers-settings` | RPC Peers Settings | Whitelist IPs and subnets allowed to access the RPC interface |
-| `mempool-settings` | Mempool Settings | Max mempool size, minimum relay fee, and mempool expiry policy |
-
-### Credentials
-
-| Action ID | Name | Description |
-|---|---|---|
-| `view-rpc-credentials` | View RPC Credentials | Select a stored credential by name to reveal username, password, and port |
-| `generate-rpc-credential` | Generate RPC Credential | Create a new named RPC credential (random password) |
-| `delete-rpc-credentials` | Delete RPC Credentials | Remove a named credential from `store.json` |
-
-### Maintenance
-
-| Action ID | Name | Description |
-|---|---|---|
-| `reindex-blockchain` | Reindex Blockchain | Delete chainstate and re-verify every block from genesis; takes many hours |
-| `reindex-chainstate` | Reindex Chainstate | Rebuild the UTXO set only — faster than a full blockchain reindex |
-| `delete-peers` | Delete Peer List | Remove cached `peers.json`; BCHD rebuilds peer discovery on next start |
-| `delete-test-network-data` | Delete Test Network Data | Wipe data directory for the currently selected test network |
-
-### Hidden (cross-package)
-
-| Action ID | Name | Description |
-|---|---|---|
-| `autoconfig` | Auto-Configure | Called by dependent packages (Fulcrum, Explorer, ASICSeer, EloPool) to retrieve and validate RPC credentials |
+| Action ID | Name | Group | Description |
+|---|---|---|---|
+| `runtime-info` | Node Info | Info | Version, protocol, relay fee, peer count, chain, and sync status via `bchctl getinfo`/`getblockchaininfo`/`getpeerinfo` (over TLS). |
+| `network-settings` | Chain Network | Configuration | Select the BCH network; restarts BCHD. |
+| `node-settings` | Node Settings | Configuration | Indexes, pruning, Fast Sync, gRPC, filters, DB/UTXO cache, flush interval. |
+| `rpc-peers-settings` | RPC & Peers Settings | Configuration | Max peers, Tor routing/isolation, Onion-Only Mode, clearnet advertising. Restarts BCHD. |
+| `mempool-settings` | Mempool & Block Policy | Configuration | Excessive block size, minimum relay fee. |
+| `view-rpc-credentials` | View RPC Credentials | Credentials | Show the RPC username, password, and port. |
+| `generate-rpc-credential` | Generate RPC Credential | Credentials | Generate a new password and set it as **the** RPC credential (BCHD accepts a single RPC user), then restart. |
+| `reindex-chainstate` | Reindex Chainstate | Maintenance | Rebuild the UTXO database from existing block files (`--reindexchainstate`); restarts. |
+| `delete-peers` | Delete Peer List | Maintenance | Remove `peers.json` (rebuilt from DNS seeds). Stopped only. |
+| `delete-test-network-data` | Delete Test Network Data | Maintenance | Delete a test network's `/data/<network>` directory. Never touches mainnet. |
+| `delete-mainnet-data` | Delete Mainnet Data | Maintenance | Delete `/data/mainnet` (re-sync from genesis). Required to enable txindex after Fast Sync. |
+| `autoconfig` | Auto-Configure | _hidden_ | Cross-package config hook for dependent services. |
 
 ---
 
 ## 8. Backups and Restore
 
-**What IS backed up:**
-- `bchd.conf` — node configuration
-- `store.json` — credentials, network selection, reindex flags, sync state
-- `rpc.cert` / `rpc.key` — TLS certificates
-- Any other files in `/data` not listed below
+`Backups.ofVolumes('main')` excludes the per-network data directories (`/mainnet`, `/testnet3`, `/testnet4`, `/chipnet`, `/regtest`), which hold all re-syncable data (blocks, UTXO metadata, indexes, peers).
 
-**What is NOT backed up:**
-- `/blocks` — raw blockchain data (too large; re-downloaded after restore)
-- `/chainstate` — UTXO set (derived from blocks; rebuilt automatically)
-- `/peers.json` — peer address cache (rebuilt on next connection)
-
-Restoring overwrites current configuration. Blockchain data is not included and will be re-synced from genesis automatically after restore.
+**Backed up:** `bchd.conf`, `store.json`, `rpc.cert`, `rpc.key`.
+**Not backed up:** all blockchain/chainstate/index/peer data — re-synced automatically after restore.
 
 ---
 
 ## 9. Health Checks
 
-| Check | Method | Key Messages |
-|---|---|---|
-| **RPC** (daemon ready) | `bchctl getinfo` | `BCHD RPC is ready` / `BCHD RPC is starting...` |
-| **Blockchain Sync** | `bchctl getblockchaininfo` — reads `verificationprogress`, `initialblockdownload`, `mediantime` (stale > 2 h means syncing) | `Synced — block N` / `Syncing blocks... X.XX% (N/M)` |
-| **Peer Connections** | `bchctl getpeerinfo` — counts total and inbound peers | `N peers (X outbound, Y inbound)` / `No peers connected` / `Only N peer(s) connected` |
-| **gRPC** | `/proc/net/tcp` port-listen probe (avoids TLS handshake noise) | `gRPC API is listening on port 8335` / `gRPC API is disabled` / `gRPC API is starting up...` |
-| **RPC Plaintext Proxy** | `/proc/net/tcp` port-listen probe | `Plaintext RPC proxy ready on port 8334 (stunnel → BCHD TLS)` / `Plaintext RPC proxy starting...` |
-| **Tor** | Store flags + `sdk.getStatus(tor)` | `Tor proxy active — inbound and outbound` / `Tor proxy configured — will activate after IBD` / `Tor routing deferred` / `Tor is not installed` |
-| **Clearnet** | `onlynet` config + `externalip` list | `Inbound and outbound connections` / `Outbound only. Publish an IP address to enable inbound.` |
-| **I2P** | Static | `I2P support is not implemented yet.` (always disabled) |
+| Check | Method |
+|---|---|
+| **RPC** (daemon ready) | `bchctl getinfo` over TLS |
+| **Blockchain Sync** | `getblockchaininfo`; compares `blocks` to `syncheight` (the best height advertised by peers) — syncing until caught up. (BCHD's `initialblockdownload` is omitted well before the tip, so it is not used.) |
+| **Peer Connections** | `getpeerinfo`; reports total with inbound/outbound split |
+| **gRPC** | `/proc/net/tcp` listen probe on the gRPC port (avoids TLS-handshake log noise); `disabled` when gRPC is off |
+| **RPC Plaintext Proxy** | `/proc/net/tcp` listen probe on `8334` |
+| **Tor** | Store flags + `getContainerIp`/`getStatus` for the Tor package; reports disabled/installed/running and inbound vs outbound |
+| **Clearnet** | `disabled` under Onion-Only Mode; otherwise inbound vs outbound based on whether a non-onion `externalip` is published |
 
 ---
 
 ## 10. Dependencies
 
-### Tor (optional)
-
-| Field | Value |
-|---|---|
-| **Package ID** | `tor` |
-| **Version constraint** | Any |
-| **Required state** | Running (optional — used only when enabled in Chain Network settings) |
-| **Health checks** | Container IP via `sdk.getContainerIp`; running state via `sdk.getStatus` |
-| **Mounted volumes** | None |
-| **Purpose** | Provides SOCKS5 proxy at `tor.startos:9050` for Tor-routed P2P and inbound `.onion` connections. Proxy activation is deferred until `fullySynced = true` to avoid IBD performance penalty. |
+**Tor** (optional). Declared optional in the manifest; promoted to a `running` requirement by `dependencies.ts` while **Tor Routing** is enabled. Provides the SOCKS5 proxy at `tor.startos:9050` for Tor-routed P2P (`--onion`) and, in Onion-Only Mode, all outbound traffic (`--proxy`).
 
 ---
 
@@ -205,127 +164,18 @@ Restoring overwrites current configuration. Blockchain data is not included and 
 
 | Setting | Upstream Default | StartOS Value | Reason |
 |---|---|---|---|
-| RPC TLS | Optional (`--notls` available) | Always enabled via `--rpccert` / `--rpckey` | StartOS binds RPC to `0.0.0.0`; BCHD warns against `--notls` on non-localhost; avoids log noise on every start |
-| Tor proxy activation | Immediate on configure | Deferred until `fullySynced = true` | IBD via Tor is prohibitively slow; proxy activates automatically after the first full sync completes |
-| `--externalip` | Not set | Written from `store.json` by `watchHosts` | Ensures BCHD advertises the actual StartOS-assigned addresses (clearnet and/or Tor) |
-| Plaintext RPC proxy | Not present | `stunnel4` sidecar on port 8334 | ckpool-lineage mining software (ASICSeer, EloPool) has no TLS library |
-| Filesystem attribute | Default (CoW) | NoCOW via `chattr +C` | Blockchain sequential writes cause heavy fragmentation on btrfs Copy-on-Write filesystems |
+| RPC/gRPC TLS | Optional | Always on (`--rpccert`/`--rpckey`) | StartOS binds to `0.0.0.0`; BCHD warns against `--notls` there |
+| `--rpcmaxclients` | 10 | 50 | The health checks plus consumers can briefly exceed 10 concurrent RPC clients during IBD |
+| `--externalip` | Unset | From `store.json` via `watchHosts` | Advertise the actual StartOS-assigned onion/clearnet addresses |
+| Plaintext RPC | None | `stunnel4` sidecar on `8334` | ckpool-lineage miners have no TLS library |
+| Filesystem | CoW | NoCOW (`chattr +C`) | Sequential block writes fragment heavily on btrfs CoW |
 
 ---
 
 ## 12. Limitations and Differences
 
-1. BCHD does **not** implement Double Spend Proof (DSP). Mining operations that require DSP relay should use Bitcoin Cash Node (BCHN) or Flowee.
-2. Supported networks are **mainnet, testnet3, chipnet, and regtest only**. Testnet4 and scalenet are not supported by the upstream `gcash/bchd` codebase.
-3. gRPC is **disabled by default** and must be explicitly enabled in Node Settings. This reduces resource usage for nodes that do not need the gRPC API.
-4. The RPC server uses a **self-signed TLS certificate** (`rpc.cert`). Clients that perform TLS certificate verification must either trust this certificate or configure skip-verify.
-5. **Pruning disables the transaction index.** Enabling the prune option in Node Settings automatically forces `txindex` and `addrindex` off.
-6. **Tor proxy is not active during Initial Block Download.** This is intentional — IBD via Tor is too slow on most hardware. Tor routing begins automatically once `fullySynced = true` is written to `store.json`.
-7. The **plaintext RPC proxy on port 8334** (stunnel sidecar) is a StartOS-only workaround. Once upstream ckpool-lineage software gains TLS support, this sidecar and the `rpc-plaintext` interface will be removed in a single commit.
-
----
-
-## 13. What Is Unchanged from Upstream
-
-- All Bitcoin Cash consensus rules and network protocols implemented in `gcash/bchd`
-- Full JSON-RPC API compatibility with upstream `bchd`
-- gRPC API with pub/sub notifications and compact block filter support
-- BIP 157/158 Neutrino (compact block filters) behavior
-- BIP 37 bloom filter support
-- Transaction index (`txindex`) and address index (`addrindex`) functionality
-- Peer connection logic, DNS seeding, and ban management
-- Configuration file format (`bchd.conf`)
-
----
-
-## 14. Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
-
----
-
-## 15. Quick Reference for AI Consumers
-
-```yaml
-package_id: bchd
-title: Bitcoin Cash Daemon
-license: ISC
-upstream_repo: https://github.com/gcash/bchd
-package_repo: https://github.com/BitcoinCash1/bitcoin-cash-daemon-startos
-image:
-  id: bchd
-  build: dockerfile
-  source: Dockerfile.binary (pre-built GHCR binary)
-architectures:
-  - x86_64
-  - aarch64
-  - riscv64
-volumes:
-  - name: main
-    mountpoint: /data
-    purpose: blockchain data, config, credentials
-ports:
-  - interface: rpc
-    port: 8332
-    protocol: https
-    purpose: JSON-RPC over TLS
-    condition: always (mainnet)
-  - interface: rpc-plaintext
-    port: 8334
-    protocol: http
-    purpose: plaintext RPC proxy (stunnel) for mining pool software
-    condition: always
-  - interface: peer
-    port: 8333
-    protocol: tcp
-    purpose: P2P Bitcoin Cash network
-    condition: always (mainnet)
-  - interface: grpc
-    port: 8335
-    protocol: https
-    purpose: gRPC API over TLS
-    condition: when grpclisten is enabled in Node Settings
-networks_supported:
-  mainnet:  { rpc: 8332, peer: 8333, grpc: 8335 }
-  testnet3: { rpc: 18332, peer: 18333, grpc: 18335 }
-  chipnet:  { rpc: 48334, peer: 48333, grpc: 48335 }
-  regtest:  { rpc: 18444, peer: 18445, grpc: 18446 }
-dependencies:
-  tor:
-    optional: true
-    purpose: SOCKS5 proxy for Tor-routed P2P and inbound .onion connections
-startos_managed_files:
-  - /data/bchd.conf
-  - /data/store.json
-  - /data/rpc.cert
-  - /data/rpc.key
-actions:
-  - { id: runtime-info, name: "Node Info", group: Info }
-  - { id: network-settings, name: "Chain Network", group: Configuration }
-  - { id: node-settings, name: "Node Settings", group: Configuration }
-  - { id: rpc-peers-settings, name: "RPC Peers Settings", group: Configuration }
-  - { id: mempool-settings, name: "Mempool Settings", group: Configuration }
-  - { id: view-rpc-credentials, name: "View RPC Credentials", group: Credentials }
-  - { id: generate-rpc-credential, name: "Generate RPC Credential", group: Credentials }
-  - { id: delete-rpc-credentials, name: "Delete RPC Credentials", group: Credentials }
-  - { id: reindex-blockchain, name: "Reindex Blockchain", group: Maintenance }
-  - { id: reindex-chainstate, name: "Reindex Chainstate", group: Maintenance }
-  - { id: delete-peers, name: "Delete Peer List", group: Maintenance }
-  - { id: delete-test-network-data, name: "Delete Test Network Data", group: Maintenance }
-  - { id: autoconfig, name: "Auto-Configure", group: hidden }
-health_checks:
-  - { id: primary, display: "RPC", method: "bchctl getinfo" }
-  - { id: sync-progress, display: "Blockchain Sync", method: "bchctl getblockchaininfo" }
-  - { id: peer-connections, display: "Peer Connections", method: "bchctl getpeerinfo" }
-  - { id: grpc, display: "gRPC", method: "/proc/net/tcp port-listen probe" }
-  - { id: rpc-plaintext, display: "RPC Plaintext Proxy", method: "/proc/net/tcp port-listen probe" }
-  - { id: tor, display: "Tor", method: "store flags + Tor package status" }
-  - { id: clearnet, display: "Clearnet", method: "onlynet config + externalip list" }
-  - { id: i2p, display: "I2P", method: "static disabled" }
-backup_volumes:
-  - main
-backup_excludes:
-  - /blocks
-  - /chainstate
-  - /peers.json
-```
+1. BCHD does **not** implement Double Spend Proof (DSP). Use Bitcoin Cash Node (BCHN) if you require DSP relay.
+2. BCHD's RPC authenticates a **single** user (`--rpcuser`/`--rpcpass`); all consumers share one credential. (A separate read-only `--rpclimituser` exists upstream but is not exposed here.)
+3. The RPC/gRPC servers use a **self-signed** certificate; clients that verify TLS must trust `rpc.cert` or skip verification.
+4. **Pruning and Fast Sync disable the transaction/address indexes**, and Fast Sync permanently locks out txindex for the life of the data directory.
+5. BCHD has **no per-network (`onlynet`) restriction**. Network privacy is controlled by **Tor Routing** and **Onion-Only Mode** (which routes all traffic through Tor via `--proxy`).

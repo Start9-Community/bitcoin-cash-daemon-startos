@@ -16,12 +16,12 @@ export const shape = z.object({
   network: z.enum(['mainnet', 'testnet3', 'testnet4', 'chipnet', 'regtest']).catch('mainnet'),
   fullySynced: z.boolean().catch(false),
   fastSyncUsed: z.boolean().catch(false),
-  reindexBlockchain: z.boolean().catch(false),
   reindexChainstate: z.boolean().catch(false),
   torEnabled: z.boolean().catch(true),
   torIsolation: z.boolean().catch(false),
   pruneDepth: z.number().catch(0),
   advertiseClearnetInbound: z.boolean().catch(false),
+  onionOnly: z.boolean().catch(false),
   externalip: z.array(z.string()).catch([]),
   // Per-index catch-up tracking: set when an index transitions off→on so the
   // health check can label which index is rebuilding from genesis. Cleared when

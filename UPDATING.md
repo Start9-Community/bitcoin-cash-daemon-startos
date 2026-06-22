@@ -1,16 +1,20 @@
 # Updating the upstream version
 
-This package builds **BCHD** (Go BCH full node) from source using `Dockerfile.binary`.
+This package builds **BCHD** (the Go BCH full node) from source in `Dockerfile`.
 Upstream releases live at [github.com/gcash/bchd](https://github.com/gcash/bchd/releases).
 
 ## Determining the upstream version
 
+The current pin is `ARG BCHD_VERSION=` near the top of `Dockerfile`.
 Check the latest tag on the [releases page](https://github.com/gcash/bchd/releases).
-The current pin is `ARG BCHD_VERSION=` in `Dockerfile.binary`.
 
 ## Applying the bump
 
-1. Update `ARG BCHD_VERSION=v<new version>` in `Dockerfile.binary`.
-2. Add a new `startos/versions/v<X>.<Y>.<Z>.0.ts` file and update `startos/versions/index.ts` to set it as `current`.
-3. Update version references in `README.md` and `instructions.md`.
-4. Trigger the **Build Binary Image** workflow (`workflow_dispatch`) — it rebuilds the GHCR binary image and then auto-triggers `tagAndRelease`.
+1. Update `ARG BCHD_VERSION=v<new version>` in `Dockerfile`.
+2. Update `version` and `releaseNotes` in `startos/versions/current.ts` in place — the
+   latest version always lives in that file. A new version file is only needed when the
+   bump carries a data migration (see [Versions](https://docs.start9.com/packaging/versions.html)).
+3. If upstream has moved the patched code, refresh `patches/fix-getblocktemplate-upgrade9.patch`
+   — or drop the patch (and the `RUN patch` line in `Dockerfile`) if the fix has been merged upstream.
+4. Update any version-specific references in `README.md` and `instructions.md`.
+5. `make x86 install` to build and test, then open a PR to `master`.

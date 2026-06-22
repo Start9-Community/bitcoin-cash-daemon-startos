@@ -1,3 +1,35 @@
+# ── Build ───────────────────────────────────────────────────────────
+# Build bchd, bchctl, and gencerts from upstream source with the upgrade9
+# getblocktemplate patch. The build stage is pinned to the native build
+# platform and cross-compiles to the target arch (CGO is off, so the binaries
+# are static and portable), which keeps the aarch64 Go build off slow QEMU
+# emulation.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS build
+
+ARG BCHD_VERSION=v0.22.0
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl tar patch && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN curl -fL --retry 6 --retry-delay 5 --retry-all-errors \
+    -o /tmp/bchd.tar.gz "https://github.com/gcash/bchd/archive/refs/tags/${BCHD_VERSION}.tar.gz" && \
+    mkdir -p /build/bchd && \
+    tar -xzf /tmp/bchd.tar.gz --strip-components=1 -C /build/bchd && \
+    rm -f /tmp/bchd.tar.gz
+
+WORKDIR /build/bchd
+COPY patches/fix-getblocktemplate-upgrade9.patch /tmp/
+# Fix: CheckConnectBlockTemplate omits BFUpgrade9 flag, causing getblocktemplate
+# to enforce the old 100-byte minimum instead of the post-upgrade9 65-byte one.
+RUN patch -p1 < /tmp/fix-getblocktemplate-upgrade9.patch
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/bchd . && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/bchctl ./cmd/bchctl && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/gencerts ./cmd/gencerts
+
 # ── Runtime ─────────────────────────────────────────────────────────
 FROM debian:stable-slim
 
@@ -9,10 +41,7 @@ RUN apt-get update && \
         stunnel4 && \
     rm -rf /var/lib/apt/lists/*
 
-# bchd binaries (pre-built, BFUpgrade9-patched — see Dockerfile.binary)
-COPY --from=ghcr.io/bitcoincash1/bchd-binary:latest /usr/local/bin/bchd /usr/local/bin/
-COPY --from=ghcr.io/bitcoincash1/bchd-binary:latest /usr/local/bin/bchctl /usr/local/bin/
-COPY --from=ghcr.io/bitcoincash1/bchd-binary:latest /usr/local/bin/gencerts /usr/local/bin/
+COPY --from=build /usr/local/bin/bchd /usr/local/bin/bchctl /usr/local/bin/gencerts /usr/local/bin/
 
 RUN mkdir -p /data
 VOLUME /data

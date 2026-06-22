@@ -21,10 +21,10 @@ export const deletePeers = sdk.Action.withoutInput(
       mainMounts,
       'delete-peers',
       async (sub) => {
-        // BCHD keeps peer state in peers.json (and legacy peers.dat).
+        // BCHD keeps peer state in <datadir>/<network>/peers.json.
         await sub.exec([
           'sh', '-c',
-          `rm -f ${rootDir}/peers.json ${rootDir}/peers.dat`,
+          `rm -f ${rootDir}/*/peers.json`,
         ])
       },
     )

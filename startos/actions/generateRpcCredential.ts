@@ -29,8 +29,11 @@ export const generateRpcCredential = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Generate RPC Credential',
     description:
-      'Create a new named RPC credential. The generated password is stored and can be viewed later in "View RPC Credentials".',
-    warning: null,
+      'Generate a new random password and set it as the RPC credential. BCHD accepts a ' +
+      'single RPC user, so this replaces the current credential and restarts the node.',
+    warning:
+      'Replaces the existing RPC credential and restarts BCHD. Any wallet or service using ' +
+      'the old credential must be updated with the new one, or it will fail to authenticate.',
     allowedStatuses: 'any',
     group: 'Credentials',
     visibility: 'enabled',
@@ -56,27 +59,21 @@ export const generateRpcCredential = sdk.Action.withInput(
       password += chars[b % chars.length]
     }
 
-    // Read existing credentials and append
-    const store = await storeJson.read().once()
-    const creds = [...(store?.rpcCredentials ?? [])]
-
-    // Remove any existing entry with the same name (replace)
-    const filtered = creds.filter((c) => c.name !== name)
-    filtered.push({ name, username, password })
-
-    // Also update legacy rpcUser/rpcPassword to match the first credential
-    const active = filtered[0]!
+    // BCHD authenticates a single RPC user (--rpcuser/--rpcpass), which main.ts
+    // reads from rpcCredentials[0]. Replace the credential (rather than append a
+    // non-functional extra) and restart so BCHD picks up the new password.
     await storeJson.merge(effects, {
-      rpcCredentials: filtered,
-      rpcUser: active.username,
-      rpcPassword: active.password,
+      rpcCredentials: [{ name, username, password }],
+      rpcUser: username,
+      rpcPassword: password,
     })
+    await effects.restart()
 
     return {
       version: '1' as const,
       title: `RPC Credential: ${name}`,
       message: [
-        'Credential saved. You can view it anytime in **View RPC Credentials**.',
+        'Credential saved and BCHD restarted. View it anytime in **View RPC Credentials**.',
         '',
         `**Name:** ${name}`,
         `**Username:** ${username}`,

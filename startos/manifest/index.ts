@@ -20,7 +20,7 @@ export const manifest = setupManifest({
   images: {
     bchd: {
       source: { dockerBuild: {} },
-      arch: ['x86_64', 'aarch64', 'riscv64'],
+      arch: ['x86_64', 'aarch64'],
     },
   },
   alerts: {
