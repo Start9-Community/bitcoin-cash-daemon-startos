@@ -21,6 +21,13 @@ export const rpcPort = networkPorts.mainnet.rpc
 export const peerPort = networkPorts.mainnet.peer
 export const grpcPort = networkPorts.mainnet.grpc
 export const rpcPlaintextPort = 8334
+// Host ids (the `sdk.MultiHost.of` groups) — distinct from the interface ids
+// exported on them. Used for `sdk.host.getOwn` lookups.
+export const rpcHostId = 'rpc'
+export const peerHostId = 'peer'
+export const grpcHostId = 'grpc'
+export const rpcPlaintextHostId = 'rpc-plaintext'
+
 export const rpcInterfaceId = 'rpc'
 export const peerInterfaceId = 'peer'
 export const grpcInterfaceId = 'grpc'

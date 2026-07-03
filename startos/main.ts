@@ -161,7 +161,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
   bchdArgs.push(`--rpccert=${rootDir}/rpc.cert`)
   bchdArgs.push(`--rpckey=${rootDir}/rpc.key`)
 
-  const bchdSub = await sdk.SubContainer.of(
+  const bchdSub = sdk.SubContainer.of(
     effects,
     { imageId: 'bchd' },
     mainMounts,
@@ -171,7 +171,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // stunnel SubContainer: accepts plaintext HTTP on 8334, forwards to
   // BCHD's native TLS RPC on 127.0.0.1:8332. Required for ckpool-lineage
   // miners (asicseer-pool, ckpool) which have no TLS/SSL library at all.
-  const stunnelSub = await sdk.SubContainer.of(
+  const stunnelSub = sdk.SubContainer.of(
     effects,
     { imageId: 'bchd' },
     mainMounts,

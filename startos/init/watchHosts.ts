@@ -1,7 +1,7 @@
 import { bchdConf } from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 import { sdk } from '../sdk'
-import { peerInterfaceId } from '../utils'
+import { peerHostId, peerInterfaceId } from '../utils'
 
 // Format a HostnameInfo as "host:port" (or "[v6]:port"). BCHD's --externalip
 // flag accepts a bare address/port pair.
@@ -20,44 +20,48 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
   const allowIpv4 = !onlynetActive || onlynetList.includes('ipv4')
   const allowIpv6 = !onlynetActive || onlynetList.includes('ipv6')
 
-  const publicInfo = await sdk.serviceInterface
-    .getOwn(effects, peerInterfaceId, (i) =>
-      i?.addressInfo?.public.filter({
+  // One subscription on the peer host; the map fn walks the host to the peer
+  // interface and returns just the advertised externalip list (onions + the
+  // optional public IPv4/IPv6), so this re-runs only when that list changes
+  // rather than on unrelated host churn.
+  const externalip = await sdk.host
+    .getOwn(effects, peerHostId, (host) => {
+      const iface =
+        host &&
+        Object.values(host.bindings)
+          .flatMap((b) => Object.values(b.interfaces))
+          .find((i) => i.id === peerInterfaceId)
+      if (!host || !iface) return undefined
+      const publicInfo = iface.addressInfo.public.filter({
         exclude: { kind: 'domain' },
-      }),
-    )
+      })
+      const list: string[] = []
+      list.push(
+        ...publicInfo
+          .filter({
+            predicate: ({ metadata }) =>
+              metadata.kind === 'plugin' && metadata.packageId === 'tor',
+          })
+          .format('hostname-info')
+          .map(toHostPort),
+      )
+      if (advertiseClearnetInbound) {
+        if (allowIpv4) {
+          list.push(
+            ...publicInfo.filter({ kind: 'ipv4' }).format('hostname-info').map(toHostPort),
+          )
+        }
+        if (allowIpv6) {
+          list.push(
+            ...publicInfo.filter({ kind: 'ipv6' }).format('hostname-info').map(toHostPort),
+          )
+        }
+      }
+      return list
+    })
     .const()
 
-  if (!publicInfo) return
-
-  const externalip: string[] = []
-
-  const onions = publicInfo
-    .filter({
-      predicate: ({ metadata }) =>
-        metadata.kind === 'plugin' && metadata.packageId === 'tor',
-    })
-    .format('hostname-info')
-    .map(toHostPort)
-
-  externalip.push(...onions)
-
-  if (advertiseClearnetInbound) {
-    if (allowIpv4) {
-      const ipv4s = publicInfo
-        .filter({ kind: 'ipv4' })
-        .format('hostname-info')
-        .map(toHostPort)
-      externalip.push(...ipv4s)
-    }
-    if (allowIpv6) {
-      const ipv6s = publicInfo
-        .filter({ kind: 'ipv6' })
-        .format('hostname-info')
-        .map(toHostPort)
-      externalip.push(...ipv6s)
-    }
-  }
+  if (!externalip) return
 
   await storeJson.merge(
     effects,

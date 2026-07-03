@@ -23,17 +23,6 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64', 'riscv64'],
     },
   },
-  alerts: {
-    install:
-      'BCHD is a Go-based Bitcoin Cash full node. Initial Block Download (IBD) may take several hours depending on hardware and network speed.',
-    update: null,
-    uninstall:
-      'Uninstalling will delete all blockchain data and configuration. A fresh sync will be required if you reinstall.',
-    restore:
-      'Restoring will overwrite current configuration. Blockchain data is not included in backups and will be re-synced automatically.',
-    start: null,
-    stop: null,
-  },
   dependencies: {
     tor: {
       description:
