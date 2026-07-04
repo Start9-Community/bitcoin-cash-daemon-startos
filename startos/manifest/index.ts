@@ -4,7 +4,7 @@ export const manifest = setupManifest({
   id: 'bchd',
   title: 'Bitcoin Cash Daemon',
   license: 'ISC',
-  packageRepo: 'https://github.com/BitcoinCash1/bitcoin-cash-daemon-startos',
+  packageRepo: 'https://github.com/Start9-Community/bitcoin-cash-daemon-startos',
   upstreamRepo: 'https://github.com/gcash/bchd',
   marketingUrl: 'https://bchd.cash',
   donationUrl: null,

@@ -1,0 +1,21 @@
+import { VersionInfo } from '@start9labs/start-sdk'
+
+export const current = VersionInfo.of({
+  version: '0.22.1:0',
+  releaseNotes: {
+    en_US:
+      'Updated BCHD to 0.22.1. Mining fix: block templates now include the Upgrade9 (CashTokens) script flags, so valid CashToken transactions are no longer dropped from templates — which had produced empty or near-empty blocks on token-active networks. Also removes the defunct dnsseed.electroncash.de DNS seed and modernizes internal sync/atomic usage. Release notes: https://github.com/gcash/bchd/releases/tag/v0.22.1. Also includes internal updates for start-sdk 2.0.',
+    es_ES:
+      'BCHD actualizado a 0.22.1. Corrección de minería: las plantillas de bloques ahora incluyen los indicadores de script de Upgrade9 (CashTokens), por lo que las transacciones válidas de CashToken ya no se descartan de las plantillas, lo que producía bloques vacíos o casi vacíos en redes con tokens activos. También elimina la semilla DNS obsoleta dnsseed.electroncash.de y moderniza el uso interno de sync/atomic. Notas de la versión: https://github.com/gcash/bchd/releases/tag/v0.22.1. También incluye actualizaciones internas para start-sdk 2.0.',
+    de_DE:
+      'BCHD auf 0.22.1 aktualisiert. Mining-Fix: Block-Templates enthalten jetzt die Skript-Flags von Upgrade9 (CashTokens), sodass gültige CashToken-Transaktionen nicht mehr aus Templates entfernt werden — was auf Token-aktiven Netzwerken leere oder fast leere Blöcke erzeugte. Entfernt außerdem den veralteten DNS-Seed dnsseed.electroncash.de und modernisiert die interne sync/atomic-Nutzung. Versionshinweise: https://github.com/gcash/bchd/releases/tag/v0.22.1. Enthält außerdem interne Aktualisierungen für start-sdk 2.0.',
+    pl_PL:
+      'Zaktualizowano BCHD do 0.22.1. Poprawka wydobycia: szablony bloków zawierają teraz flagi skryptów Upgrade9 (CashTokens), dzięki czemu prawidłowe transakcje CashToken nie są już usuwane z szablonów — co powodowało puste lub prawie puste bloki w sieciach z aktywnymi tokenami. Usuwa również nieaktualny seed DNS dnsseed.electroncash.de i modernizuje wewnętrzne użycie sync/atomic. Informacje o wydaniu: https://github.com/gcash/bchd/releases/tag/v0.22.1. Zawiera również wewnętrzne aktualizacje dla start-sdk 2.0.',
+    fr_FR:
+      "BCHD mis à jour vers 0.22.1. Correctif de minage : les modèles de blocs incluent désormais les indicateurs de script d'Upgrade9 (CashTokens), de sorte que les transactions CashToken valides ne sont plus supprimées des modèles — ce qui produisait des blocs vides ou presque vides sur les réseaux à jetons actifs. Supprime également la source DNS obsolète dnsseed.electroncash.de et modernise l'utilisation interne de sync/atomic. Notes de version : https://github.com/gcash/bchd/releases/tag/v0.22.1. Inclut également des mises à jour internes pour start-sdk 2.0.",
+  },
+  migrations: {
+    up: async ({ effects }) => {},
+    down: async ({ effects }) => {},
+  },
+})
