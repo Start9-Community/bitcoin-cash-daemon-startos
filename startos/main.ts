@@ -1,5 +1,6 @@
 import { sdk } from './sdk'
-import { Network, NETWORKS, networkFlag, networkPorts, rootDir, rpcPlaintextPort } from './utils'
+import { socksHostId, socksPort } from 'tor-startos/startos/utils'
+import { bridgeAddress, Network, NETWORKS, networkFlag, networkPorts, rootDir, rpcPlaintextPort } from './utils'
 import { bchdConf } from './fileModels/bchd.conf'
 import { storeJson } from './fileModels/store.json'
 import { mainMounts } from './mounts'
@@ -52,19 +53,28 @@ export const main = sdk.setupMain(async ({ effects }) => {
     )
   }
 
-  // Tor — get container IP (restarts BCHD if it changes)
-  const torIp = torEnabled
-    ? await sdk.getContainerIp(effects, { packageId: 'tor' }).const()
-    : null
+  // Tor SOCKS over the bridge. The mapped value only changes when the address
+  // itself does — with the 9050 fallback it stays constant across tor
+  // install/update/uninstall, so this .const() never restarts BCHD unless tor
+  // lands on a different port (then one healing restart). A dead bridge address
+  // is just connection-refused, so the Tor flags are safe to pass whenever the
+  // user has Tor routing enabled, even before Tor is installed.
+  const torSocks = await bridgeAddress(effects, {
+    packageId: 'tor',
+    hostId: socksHostId,
+    internalPort: socksPort,
+    fallbackPort: socksPort,
+  }).const()
 
-  // Track Tor running status dynamically
+  // Track Tor install/run state dynamically for the health check (no restart).
+  // Registered unconditionally so it arms and heals regardless of start order.
+  let torInstalled = false
   let torRunning = false
-  if (torIp) {
-    sdk.getStatus(effects, { packageId: 'tor' }).onChange((status) => {
-      torRunning = status?.desired.main === 'running'
-      return { cancel: false }
-    })
-  }
+  sdk.getStatus(effects, { packageId: 'tor' }).onChange((status) => {
+    torInstalled = status !== null
+    torRunning = status?.desired.main === 'running'
+    return { cancel: false }
+  })
 
   const bchdArgs: string[] = [
     `--configfile=${rootDir}/bchd.conf`,
@@ -105,10 +115,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
     bchdArgs.push('--fastsync')
   }
 
-  if (torIp) {
-    bchdArgs.push(`--onion=${torIp}:9050`)
+  if (torEnabled) {
+    bchdArgs.push(`--onion=${torSocks}`)
     if (onionOnly) {
-      bchdArgs.push(`--proxy=${torIp}:9050`)
+      bchdArgs.push(`--proxy=${torSocks}`)
     }
     if (store?.torIsolation) {
       bchdArgs.push('--torisolation')
@@ -449,7 +459,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
             return { result: 'failure' as const, message: 'Invalid config: onlynet=onion requires Tor routing enabled' }
           if (!torEnabled)
             return { result: 'disabled' as const, message: 'Tor proxy is disabled in config' }
-          if (!torIp)
+          if (!torInstalled)
             return { result: 'disabled' as const, message: 'Tor is not installed' }
           if (!torRunning)
             return { result: 'disabled' as const, message: 'Tor is not running' }

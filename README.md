@@ -195,9 +195,9 @@ Restoring overwrites current configuration. Blockchain data is not included and 
 | **Package ID** | `tor` |
 | **Version constraint** | Any |
 | **Required state** | Running (optional — used only when enabled in Chain Network settings) |
-| **Health checks** | Container IP via `sdk.getContainerIp`; running state via `sdk.getStatus` |
+| **Address resolution** | SOCKS proxy address resolved reactively over the LXC bridge via the `bridgeAddress` helper (`sdk.host.get` on Tor's `socks` host, `.const()`); install/run state tracked via `sdk.getStatus` |
 | **Mounted volumes** | None |
-| **Purpose** | Provides SOCKS5 proxy at `tor.startos:9050` for Tor-routed P2P and inbound `.onion` connections. Proxy activation is deferred until `fullySynced = true` to avoid IBD performance penalty. |
+| **Purpose** | Provides a SOCKS5 proxy reachable over the internal service bridge (`<osIp>:9050`) for Tor-routed P2P and inbound `.onion` connections. Proxy activation is deferred until `fullySynced = true` to avoid IBD performance penalty. |
 
 ---
 
