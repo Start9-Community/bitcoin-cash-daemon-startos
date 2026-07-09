@@ -34,7 +34,7 @@
 | Field | Value |
 |---|---|
 | **Image ID** | `bchd` |
-| **Build** | Docker build from `Dockerfile.binary` (pulls pre-built `bchd` binary from GHCR) |
+| **Build** | Multi-stage Docker build from `Dockerfile` — `bchd` is cross-compiled from upstream source (pure Go, `CGO_ENABLED=0`) in the `bchd-build` stage |
 | **Architectures** | `x86_64`, `aarch64`, `riscv64` |
 | **Command** | `bchd --configfile=/data/bchd.conf --datadir=/data --rpclisten=0.0.0.0:PORT --listen=0.0.0.0:PORT ...` |
 | **Sidecar** | `stunnel4` in a second SubContainer — accepts plaintext RPC on port 8334, forwards to BCHD TLS RPC on 8332 |
@@ -255,7 +255,7 @@ package_repo: https://github.com/BitcoinCash1/bitcoin-cash-daemon-startos
 image:
   id: bchd
   build: dockerfile
-  source: Dockerfile.binary (pre-built GHCR binary)
+  source: Dockerfile (bchd cross-compiled from source)
 architectures:
   - x86_64
   - aarch64

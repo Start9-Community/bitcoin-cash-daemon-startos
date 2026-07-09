@@ -23,14 +23,14 @@ jobs:
           LATEST=$(gh release view --repo gcash/bchd --json tagName --jq '.tagName' 2>/dev/null || echo "")
           if [ -z "$LATEST" ]; then echo "Could not fetch upstream version"; exit 0; fi
 
-          CURRENT=$(grep -E '^ARG BCHD_VERSION=' Dockerfile.binary | cut -d= -f2)
+          CURRENT=$(grep -E '^ARG BCHD_VERSION=' Dockerfile | cut -d= -f2)
           if [ "$LATEST" = "$CURRENT" ]; then echo "Already at $LATEST — no update"; exit 0; fi
 
           echo "Updating $CURRENT -> $LATEST"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          sed -i "s|^ARG BCHD_VERSION=.*|ARG BCHD_VERSION=${LATEST}|" Dockerfile.binary
-          git add Dockerfile.binary
+          sed -i "s|^ARG BCHD_VERSION=.*|ARG BCHD_VERSION=${LATEST}|" Dockerfile
+          git add Dockerfile
           bash scripts/auto-bump.sh "$LATEST"
         shell: bash
         env:

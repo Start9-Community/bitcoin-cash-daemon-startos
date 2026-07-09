@@ -46,7 +46,7 @@ sed -i "s/other: \[/other: [${CURRENT_VAR}, /" startos/versions/index.ts
 
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
-git add startos/versions/index.ts "$NEW_FILE" Dockerfile.binary
+git add startos/versions/index.ts "$NEW_FILE" Dockerfile
 git commit -m "feat: auto-bump to upstream ${DISPATCHED_TAG} (v${NEW_VERSION})"
 git push origin master
 echo "Version bump committed — continuing build"
