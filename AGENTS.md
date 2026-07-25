@@ -13,7 +13,7 @@ Work this package's `TODO.md` from top to bottom. Keep `README.md` (architecture
 - **Package id is `bchd`.** BCHD is a Go-based Bitcoin Cash full node. The packaging is derived from Bitcoin Core's — `main.ts`, `interfaces.ts`, and `init/watchHosts.ts` mirror the `start9-registry/bitcoin-core` patterns; compare against that package when a construct is unclear.
 - **Two subcontainers in `main.ts`:** `node-sub` (the `bchd` daemon) and `stunnel-sub` (a plaintext-RPC proxy sidecar for miners like asicseer-pool/ckpool that have no TLS library).
 - **Four host interfaces are exported for dependents** (host/interface id constants live in `startos/utils.ts`): `rpc` (JSON-RPC over TLS, 8332), `rpc-plaintext` (plaintext RPC via stunnel, 8334), `grpc` (gRPC over TLS, 8335, conditional on `grpclisten`), and `peer` (P2P, 8333).
-- **Tor is read at runtime, not via a StartOS binding.** Tor's SOCKS proxy has no host to import; `main.ts` targets it with `sdk.getContainerIp(effects, { packageId: 'tor' })` + `:9050`.
+- **Tor's SOCKS proxy is reached over the service bridge.** It exports no interface, so `main.ts` resolves it with `sdk.host.getBridgeAddress` on tor's `socks` host (`socksHostId`/`socksPort` from `tor-startos`), with a `9050` fallback that holds the address constant while tor is absent.
 
 ## Inspecting a running install
 
