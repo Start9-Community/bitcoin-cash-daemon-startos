@@ -12,11 +12,11 @@ const networkSpec = InputSpec.of({
     warning:
       'Mainnet data is preserved. Chipnet/regtest use separate data directories and can be cleaned via Maintenance actions.',
     values: {
-      mainnet:  'Mainnet',
+      mainnet: 'Mainnet',
       testnet3: 'Testnet3 (BCH test network)',
       testnet4: 'Testnet4 (BCH test network v4)',
-      chipnet:  'Chipnet (upgrade testing network)',
-      regtest:  'Regtest (local/private testing network)',
+      chipnet: 'Chipnet (upgrade testing network)',
+      regtest: 'Regtest (local/private testing network)',
     },
     default: 'mainnet',
   }),

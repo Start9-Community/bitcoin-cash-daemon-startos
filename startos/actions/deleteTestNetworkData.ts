@@ -23,10 +23,7 @@ const deleteSpec = InputSpec.of({
 })
 
 function pathsFor(network: 'testnet3' | 'testnet4' | 'chipnet' | 'regtest') {
-  return [
-    `${rootDir}/${network}`,
-    `${rootDir}/logs/${network}`,
-  ]
+  return [`${rootDir}/${network}`, `${rootDir}/logs/${network}`]
 }
 
 export const deleteTestNetworkData = sdk.Action.withInput(
@@ -52,7 +49,10 @@ export const deleteTestNetworkData = sdk.Action.withInput(
   async ({ effects, input }) => {
     const selected = ((input.networks as string[] | undefined) ?? []).filter(
       (n): n is 'testnet3' | 'testnet4' | 'chipnet' | 'regtest' =>
-        n === 'testnet3' || n === 'testnet4' || n === 'chipnet' || n === 'regtest',
+        n === 'testnet3' ||
+        n === 'testnet4' ||
+        n === 'chipnet' ||
+        n === 'regtest',
     )
 
     if (selected.length === 0) {
@@ -66,12 +66,15 @@ export const deleteTestNetworkData = sdk.Action.withInput(
 
     const store = await storeJson.read().once()
     const active = store?.network ?? 'mainnet'
-    if (selected.includes(active as 'testnet3' | 'testnet4' | 'chipnet' | 'regtest')) {
+    if (
+      selected.includes(
+        active as 'testnet3' | 'testnet4' | 'chipnet' | 'regtest',
+      )
+    ) {
       return {
         version: '1' as const,
         title: 'Active Network Protected',
-        message:
-          `Cannot delete data for the currently active network (${active}). Switch back to mainnet first, then retry.`,
+        message: `Cannot delete data for the currently active network (${active}). Switch back to mainnet first, then retry.`,
         result: null,
       }
     }
@@ -102,8 +105,7 @@ export const deleteTestNetworkData = sdk.Action.withInput(
     return {
       version: '1' as const,
       title: 'Test Network Data Deleted',
-      message:
-        `Deleted data for ${selected.join(', ')}. Removed paths: ${deletedPaths.join(', ')}. Mainnet data was not touched.`,
+      message: `Deleted data for ${selected.join(', ')}. Removed paths: ${deletedPaths.join(', ')}. Mainnet data was not touched.`,
       result: null,
     }
   },

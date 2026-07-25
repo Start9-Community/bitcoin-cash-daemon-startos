@@ -15,7 +15,9 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
   const advertiseClearnetInbound = !!store?.advertiseClearnetInbound
 
   const conf = await bchdConf.read().const(effects)
-  const onlynetList: string[] = ((conf?.onlynet as string[] | undefined) ?? []).filter(Boolean)
+  const onlynetList: string[] = (
+    (conf?.onlynet as string[] | undefined) ?? []
+  ).filter(Boolean)
   const onlynetActive = onlynetList.length > 0
   const allowIpv4 = !onlynetActive || onlynetList.includes('ipv4')
   const allowIpv6 = !onlynetActive || onlynetList.includes('ipv6')
@@ -48,12 +50,18 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
       if (advertiseClearnetInbound) {
         if (allowIpv4) {
           list.push(
-            ...publicInfo.filter({ kind: 'ipv4' }).format('hostname-info').map(toHostPort),
+            ...publicInfo
+              .filter({ kind: 'ipv4' })
+              .format('hostname-info')
+              .map(toHostPort),
           )
         }
         if (allowIpv6) {
           list.push(
-            ...publicInfo.filter({ kind: 'ipv6' }).format('hostname-info').map(toHostPort),
+            ...publicInfo
+              .filter({ kind: 'ipv6' })
+              .format('hostname-info')
+              .map(toHostPort),
           )
         }
       }
@@ -63,8 +71,5 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
 
   if (!externalip) return
 
-  await storeJson.merge(
-    effects,
-    { externalip },
-  )
+  await storeJson.merge(effects, { externalip })
 })

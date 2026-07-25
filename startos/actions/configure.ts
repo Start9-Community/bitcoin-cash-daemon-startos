@@ -31,12 +31,12 @@ export const nodeSettings = sdk.Action.withInput(
     const conf = await bchdConf.read().once()
     const store = await storeJson.read().once()
     const fastSyncUsed = store?.fastSyncUsed ?? false
-    const txindexOn = !fastSyncUsed && (conf?.txindex === 1)
+    const txindexOn = !fastSyncUsed && conf?.txindex === 1
     return {
       // Locked to false when fastSyncUsed: early blocks were never downloaded.
-      txindex: fastSyncUsed ? false : (conf?.txindex === 1),
+      txindex: fastSyncUsed ? false : conf?.txindex === 1,
       // addrindex only meaningful with txindex; show off when txindex is off.
-      addrindex: txindexOn ? (conf?.addrindex === 1) : false,
+      addrindex: txindexOn ? conf?.addrindex === 1 : false,
       fastsync: conf?.fastsync === 1,
       prune: store?.pruneDepth ?? 0,
       grpcEnabled: (conf?.grpclisten ?? '') !== '',
@@ -57,9 +57,10 @@ export const nodeSettings = sdk.Action.withInput(
     // BCHD which hard-exits if both flags are set. fastSyncUsed means early blocks
     // were never downloaded; enabling txindex would crash BCHD at startup.
     const fastsync = input.fastsync
-    const txindex = fastSyncUsed || fastsync || (input.prune && input.prune > 0)
-      ? false
-      : input.txindex
+    const txindex =
+      fastSyncUsed || fastsync || (input.prune && input.prune > 0)
+        ? false
+        : input.txindex
     // addrindex requires txindex; it's the slow index (issue #219) so it is only
     // enabled when explicitly chosen alongside txindex.
     const addrindex = txindex ? !!input.addrindex : false
@@ -71,10 +72,14 @@ export const nodeSettings = sdk.Action.withInput(
     const prevAddrindexOn = conf?.addrindex === 1
     const txindexCatchupPending = !txindex
       ? false
-      : (!prevTxindexOn ? true : (store?.txindexCatchupPending ?? false))
+      : !prevTxindexOn
+        ? true
+        : (store?.txindexCatchupPending ?? false)
     const addrindexCatchupPending = !addrindex
       ? false
-      : (!prevAddrindexOn ? true : (store?.addrindexCatchupPending ?? false))
+      : !prevAddrindexOn
+        ? true
+        : (store?.addrindexCatchupPending ?? false)
 
     await bchdConf.merge(effects, {
       txindex: txindex ? 1 : 0,
@@ -88,7 +93,8 @@ export const nodeSettings = sdk.Action.withInput(
       dbflushinterval: input.dbflushinterval,
     })
     await storeJson.merge(effects, {
-      pruneDepth: input.prune && input.prune > 0 ? Math.max(input.prune, 288) : 0,
+      pruneDepth:
+        input.prune && input.prune > 0 ? Math.max(input.prune, 288) : 0,
       txindexCatchupPending,
       addrindexCatchupPending,
     })

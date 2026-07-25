@@ -8,8 +8,7 @@ export const deleteRpcCredentials = sdk.Action.withInput(
 
   async ({ effects }) => ({
     name: 'Delete RPC Credentials',
-    description:
-      'Remove one or more stored RPC credentials by name.',
+    description: 'Remove one or more stored RPC credentials by name.',
     warning: 'Selected credentials will be permanently deleted.',
     allowedStatuses: 'any',
     group: 'Credentials',

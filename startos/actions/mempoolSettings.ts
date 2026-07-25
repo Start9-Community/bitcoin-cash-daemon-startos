@@ -29,7 +29,8 @@ export const mempoolSettings = sdk.Action.withInput(
 
   async ({ effects, input }) => {
     const patch: Record<string, unknown> = {}
-    if (input.excessiveblocksize != null) patch.excessiveblocksize = input.excessiveblocksize
+    if (input.excessiveblocksize != null)
+      patch.excessiveblocksize = input.excessiveblocksize
     if (input.minrelaytxfee != null) patch.minrelaytxfee = input.minrelaytxfee
     if (Object.keys(patch).length) {
       await bchdConf.merge(effects, patch as any)

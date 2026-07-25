@@ -19,8 +19,9 @@ import { storeJson } from './fileModels/store.json'
 export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const conf = await bchdConf.read().const(effects)
   const store = await storeJson.read().const(effects)
-  const network: Network =
-    NETWORKS.includes(store?.network as Network) ? (store!.network as Network) : 'mainnet'
+  const network: Network = NETWORKS.includes(store?.network as Network)
+    ? (store!.network as Network)
+    : 'mainnet'
   const { rpc: rpcPort, peer: peerPort, grpc: grpcPort } = networkPorts[network]
   const receipts = []
 
@@ -62,7 +63,8 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const peer = sdk.createInterface(effects, {
     name: 'Peer Interface',
     id: peerInterfaceId,
-    description: 'Listens for incoming connections from peers on the bitcoin cash network',
+    description:
+      'Listens for incoming connections from peers on the bitcoin cash network',
     type: 'p2p',
     masked: false,
     schemeOverride: { ssl: null, noSsl: null },
@@ -112,12 +114,15 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   // When upstream gains native TLS support this daemon and interface are
   // removed in a single commit — no changes needed in the miner packages.
   const rpcPlaintextMulti = sdk.MultiHost.of(effects, rpcPlaintextHostId)
-  const rpcPlaintextOrigin = await rpcPlaintextMulti.bindPort(rpcPlaintextPort, {
-    protocol: null,
-    preferredExternalPort: rpcPlaintextPort,
-    addSsl: null,
-    secure: { ssl: false },
-  })
+  const rpcPlaintextOrigin = await rpcPlaintextMulti.bindPort(
+    rpcPlaintextPort,
+    {
+      protocol: null,
+      preferredExternalPort: rpcPlaintextPort,
+      addSsl: null,
+      secure: { ssl: false },
+    },
+  )
   const rpcPlaintext = sdk.createInterface(effects, {
     name: 'RPC Plaintext Proxy',
     id: rpcPlaintextInterfaceId,

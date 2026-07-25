@@ -1,7 +1,6 @@
 import { sdk } from './sdk'
 import { socksHostId, socksPort } from 'tor-startos/startos/utils'
 import {
-  bridgeAddress,
   Network,
   NETWORKS,
   networkFlag,
@@ -70,12 +69,14 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // lands on a different port (then one healing restart). A dead bridge address
   // is just connection-refused, so the Tor flags are safe to pass whenever the
   // user has Tor routing enabled, even before Tor is installed.
-  const torSocks = await bridgeAddress(effects, {
-    packageId: 'tor',
-    hostId: socksHostId,
-    internalPort: socksPort,
-    fallbackPort: socksPort,
-  }).const()
+  const torSocks = await sdk.host
+    .getBridgeAddress(effects, {
+      packageId: 'tor',
+      hostId: socksHostId,
+      internalPort: socksPort,
+      fallbackPort: socksPort,
+    })
+    .const()
 
   // Track Tor install/run state dynamically for the health check (no restart).
   // Registered unconditionally so it arms and heals regardless of start order.

@@ -1,5 +1,10 @@
 import { sdk } from '../sdk'
-import { ALL_ONLYNETS, bchdConf, fullConfigSpec, OnlynetKey } from '../fileModels/bchd.conf'
+import {
+  ALL_ONLYNETS,
+  bchdConf,
+  fullConfigSpec,
+  OnlynetKey,
+} from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 
 export const rpcPeersSettings = sdk.Action.withInput(
@@ -7,7 +12,8 @@ export const rpcPeersSettings = sdk.Action.withInput(
 
   async ({ effects }: { effects: any }) => ({
     name: 'RPC & Peers Settings',
-    description: 'Configure peer connections, bloom filters, compact block filters, and Tor proxy behavior.',
+    description:
+      'Configure peer connections, bloom filters, compact block filters, and Tor proxy behavior.',
     warning: null,
     allowedStatuses: 'any',
     group: 'Configuration',
@@ -26,11 +32,14 @@ export const rpcPeersSettings = sdk.Action.withInput(
   async ({ effects }: { effects: any }) => {
     const conf = await bchdConf.read().once()
     const store = await storeJson.read().once()
-    const onlynetFromConf = (conf?.onlynet as string[] | undefined)?.filter(Boolean) ?? []
-    const onlynet = onlynetFromConf.length > 0
-      ? (onlynetFromConf as OnlynetKey[])
-      : [...ALL_ONLYNETS]
-    const onionOnly = onlynetFromConf.length > 0 && onlynetFromConf.every((n) => n === 'onion')
+    const onlynetFromConf =
+      (conf?.onlynet as string[] | undefined)?.filter(Boolean) ?? []
+    const onlynet =
+      onlynetFromConf.length > 0
+        ? (onlynetFromConf as OnlynetKey[])
+        : [...ALL_ONLYNETS]
+    const onionOnly =
+      onlynetFromConf.length > 0 && onlynetFromConf.every((n) => n === 'onion')
 
     return {
       maxpeers: conf?.maxpeers ?? 125,
@@ -42,12 +51,15 @@ export const rpcPeersSettings = sdk.Action.withInput(
     }
   },
 
-  async ({ effects, input }: { effects: any, input: any }) => {
-    const onlynetList = (input.onlynet as string[] | undefined)?.filter(Boolean) ?? []
+  async ({ effects, input }: { effects: any; input: any }) => {
+    const onlynetList =
+      (input.onlynet as string[] | undefined)?.filter(Boolean) ?? []
     const allSelected = ALL_ONLYNETS.every((n) => onlynetList.includes(n))
     const writeOnlynet = input.onionOnly
       ? ['onion']
-      : (onlynetList.length > 0 && !allSelected ? onlynetList : undefined)
+      : onlynetList.length > 0 && !allSelected
+        ? onlynetList
+        : undefined
 
     await bchdConf.merge(effects, {
       maxpeers: input.maxpeers,

@@ -6,7 +6,7 @@ export const v_0_22_0_16 = VersionInfo.of({
   releaseNotes:
     'Fix slow IBD: reduce default database cache from 2048 MiB to 450 MiB. ' +
     'BCHD maintains a separate 450 MiB UTXO cache internally, so the old 2048 MiB LevelDB cache totalled ~2.5 GiB — causing swap thrashing on systems with 4 GB RAM or less. ' +
-    'The new default (450 MiB) matches BCHD\'s native design. Users with high-RAM systems can increase the value in Node Settings.',
+    "The new default (450 MiB) matches BCHD's native design. Users with high-RAM systems can increase the value in Node Settings.",
   migrations: {
     up: async ({ effects }) => {
       // Reset only when the value is exactly the old wrong default (2048).

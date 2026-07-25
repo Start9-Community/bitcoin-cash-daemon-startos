@@ -23,7 +23,8 @@ export const deletePeers = sdk.Action.withoutInput(
       async (sub) => {
         // BCHD keeps peer state in peers.json (and legacy peers.dat).
         await sub.exec([
-          'sh', '-c',
+          'sh',
+          '-c',
           `rm -f ${rootDir}/peers.json ${rootDir}/peers.dat`,
         ])
       },
@@ -31,7 +32,8 @@ export const deletePeers = sdk.Action.withoutInput(
     return {
       version: '1' as const,
       title: 'Peer List Deleted',
-      message: 'Peer address database removed. BCHD will rebuild it from DNS seeds on next startup.',
+      message:
+        'Peer address database removed. BCHD will rebuild it from DNS seeds on next startup.',
       result: null,
     }
   },

@@ -13,7 +13,9 @@ export const shape = z.object({
   rpcUser: z.string().catch('bchd'),
   rpcPassword: z.string().catch(''),
   rpcCredentials: z.array(rpcCredentialShape).catch([]),
-  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'chipnet', 'regtest']).catch('mainnet'),
+  network: z
+    .enum(['mainnet', 'testnet3', 'testnet4', 'chipnet', 'regtest'])
+    .catch('mainnet'),
   fullySynced: z.boolean().catch(false),
   fastSyncUsed: z.boolean().catch(false),
   reindexBlockchain: z.boolean().catch(false),

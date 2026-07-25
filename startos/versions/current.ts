@@ -1,18 +1,23 @@
 import { VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.22.1:1',
+  version: '0.22.1:2',
   releaseNotes: {
-    en_US:
-      'Updated BCHD to 0.22.1. Mining fix: block templates now include the Upgrade9 (CashTokens) script flags, so valid CashToken transactions are no longer dropped from templates — which had produced empty or near-empty blocks on token-active networks. Also removes the defunct dnsseed.electroncash.de DNS seed and modernizes internal sync/atomic usage. Release notes: https://github.com/gcash/bchd/releases/tag/v0.22.1. Also includes internal updates for start-sdk 2.0. Tor integration is now more robust: BCHD reaches Tor’s SOCKS proxy over the internal service bridge and tracks Tor’s status reactively, so installing or updating Tor after BCHD no longer restarts BCHD and the Tor health check updates on its own.',
-    es_ES:
-      'BCHD actualizado a 0.22.1. Corrección de minería: las plantillas de bloques ahora incluyen los indicadores de script de Upgrade9 (CashTokens), por lo que las transacciones válidas de CashToken ya no se descartan de las plantillas, lo que producía bloques vacíos o casi vacíos en redes con tokens activos. También elimina la semilla DNS obsoleta dnsseed.electroncash.de y moderniza el uso interno de sync/atomic. Notas de la versión: https://github.com/gcash/bchd/releases/tag/v0.22.1. También incluye actualizaciones internas para start-sdk 2.0. La integración con Tor es ahora más robusta: BCHD accede al proxy SOCKS de Tor a través del puente interno de servicios y realiza un seguimiento reactivo del estado de Tor, por lo que instalar o actualizar Tor después de BCHD ya no reinicia BCHD y la comprobación de estado de Tor se actualiza por sí sola.',
-    de_DE:
-      'BCHD auf 0.22.1 aktualisiert. Mining-Fix: Block-Templates enthalten jetzt die Skript-Flags von Upgrade9 (CashTokens), sodass gültige CashToken-Transaktionen nicht mehr aus Templates entfernt werden — was auf Token-aktiven Netzwerken leere oder fast leere Blöcke erzeugte. Entfernt außerdem den veralteten DNS-Seed dnsseed.electroncash.de und modernisiert die interne sync/atomic-Nutzung. Versionshinweise: https://github.com/gcash/bchd/releases/tag/v0.22.1. Enthält außerdem interne Aktualisierungen für start-sdk 2.0. Die Tor-Integration ist jetzt robuster: BCHD erreicht den SOCKS-Proxy von Tor über die interne Dienstbrücke und verfolgt den Tor-Status reaktiv, sodass das Installieren oder Aktualisieren von Tor nach BCHD BCHD nicht mehr neu startet und die Tor-Zustandsprüfung sich selbst aktualisiert.',
-    pl_PL:
-      'Zaktualizowano BCHD do 0.22.1. Poprawka wydobycia: szablony bloków zawierają teraz flagi skryptów Upgrade9 (CashTokens), dzięki czemu prawidłowe transakcje CashToken nie są już usuwane z szablonów — co powodowało puste lub prawie puste bloki w sieciach z aktywnymi tokenami. Usuwa również nieaktualny seed DNS dnsseed.electroncash.de i modernizuje wewnętrzne użycie sync/atomic. Informacje o wydaniu: https://github.com/gcash/bchd/releases/tag/v0.22.1. Zawiera również wewnętrzne aktualizacje dla start-sdk 2.0. Integracja z Tor jest teraz bardziej niezawodna: BCHD łączy się z proxy SOCKS sieci Tor przez wewnętrzny mostek usług i reaktywnie śledzi stan Tora, więc instalacja lub aktualizacja Tora po BCHD nie powoduje już ponownego uruchomienia BCHD, a kontrola stanu Tora aktualizuje się samodzielnie.',
-    fr_FR:
-      "BCHD mis à jour vers 0.22.1. Correctif de minage : les modèles de blocs incluent désormais les indicateurs de script d'Upgrade9 (CashTokens), de sorte que les transactions CashToken valides ne sont plus supprimées des modèles — ce qui produisait des blocs vides ou presque vides sur les réseaux à jetons actifs. Supprime également la source DNS obsolète dnsseed.electroncash.de et modernise l'utilisation interne de sync/atomic. Notes de version : https://github.com/gcash/bchd/releases/tag/v0.22.1. Inclut également des mises à jour internes pour start-sdk 2.0. L'intégration de Tor est désormais plus robuste : BCHD atteint le proxy SOCKS de Tor via le pont de services interne et suit l'état de Tor de manière réactive, de sorte que l'installation ou la mise à jour de Tor après BCHD ne redémarre plus BCHD et la vérification d'état de Tor se met à jour d'elle-même.",
+    en_US: `Resolves the addresses of connected services more reliably.
+
+Bitcoin Cash Daemon looked up where to reach its dependencies through a field that only applies to one of the two ways a service can publish a port. It now reads the address itself, so a dependency changing how it serves TLS can no longer leave Bitcoin Cash Daemon unable to find it. Nothing changes in normal operation.`,
+    es_ES: `Resuelve de forma más fiable las direcciones de los servicios conectados.
+
+Bitcoin Cash Daemon localizaba sus dependencias mediante un campo que solo se aplica a una de las dos formas en que un servicio puede publicar un puerto. Ahora lee la dirección en sí, de modo que si una dependencia cambia su forma de servir TLS, Bitcoin Cash Daemon seguirá encontrándola. En funcionamiento normal no cambia nada.`,
+    de_DE: `Ermittelt die Adressen verbundener Dienste zuverlässiger.
+
+Bitcoin Cash Daemon suchte seine Abhängigkeiten über ein Feld, das nur für eine der beiden Arten gilt, auf die ein Dienst einen Port veröffentlichen kann. Jetzt wird die Adresse selbst gelesen, sodass eine Abhängigkeit, die ihre TLS-Bereitstellung ändert, für Bitcoin Cash Daemon auffindbar bleibt. Im normalen Betrieb ändert sich nichts.`,
+    pl_PL: `Pewniej ustala adresy połączonych usług.
+
+Bitcoin Cash Daemon wyszukiwał swoje zależności przez pole, które dotyczy tylko jednego z dwóch sposobów publikowania portu przez usługę. Teraz odczytuje sam adres, więc zależność zmieniająca sposób udostępniania TLS nadal pozostanie odnajdywalna dla Bitcoin Cash Daemon. W normalnej pracy nic się nie zmienia.`,
+    fr_FR: `Détermine plus fiablement les adresses des services connectés.
+
+Bitcoin Cash Daemon localisait ses dépendances via un champ qui ne s'applique qu'à l'un des deux modes de publication d'un port par un service. Il lit désormais l'adresse elle-même : une dépendance qui change sa façon de servir TLS reste donc trouvable par Bitcoin Cash Daemon. Rien ne change en fonctionnement normal.`,
   },
   migrations: {
     up: async ({ effects }) => {},

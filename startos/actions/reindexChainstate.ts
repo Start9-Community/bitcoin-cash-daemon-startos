@@ -14,12 +14,16 @@ export const reindexChainstate = sdk.Action.withoutInput(
     visibility: 'enabled' as const,
   }),
   async ({ effects }) => {
-    await storeJson.merge(effects, { reindexChainstate: true, fullySynced: false })
+    await storeJson.merge(effects, {
+      reindexChainstate: true,
+      fullySynced: false,
+    })
     await effects.restart()
     return {
       version: '1' as const,
       title: 'Chainstate Reindex Queued',
-      message: 'BCHD is restarting and will rebuild the UTXO chainstate from the existing block index. This can take several hours.',
+      message:
+        'BCHD is restarting and will rebuild the UTXO chainstate from the existing block index. This can take several hours.',
       result: null,
     }
   },

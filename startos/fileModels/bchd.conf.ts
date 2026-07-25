@@ -46,7 +46,9 @@ export const shape = z.object({
   maxpeers: iniNumber.catch(125),
   onlynet: iniStringArray,
   excessiveblocksize: iniNumber.catch(32000000),
-  minrelaytxfee: z.union([z.string().transform(Number), z.number()]).catch(0.00001),
+  minrelaytxfee: z
+    .union([z.string().transform(Number), z.number()])
+    .catch(0.00001),
 })
 
 export const bchdConf = FileHelper.ini(
@@ -190,7 +192,8 @@ export const fullConfigSpec = sdk.InputSpec.of({
   }),
   excessiveblocksize: sdk.Value.number({
     name: 'Excessive Block Size',
-    description: 'Max accepted block size in bytes. BCHD default: 32000000 (32 MB).',
+    description:
+      'Max accepted block size in bytes. BCHD default: 32000000 (32 MB).',
     required: false,
     default: null,
     min: 1000000,
