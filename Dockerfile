@@ -3,14 +3,14 @@
 # the builder and never needs QEMU, whatever the target arch.
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS bchd-build
 
-ARG BCHD_VERSION=v0.22.1
+ARG BCHD_VERSION=v0.22.2
 # Redeclared without a default on purpose: giving a predefined build arg a value
 # shadows the one buildx injects, so `ARG TARGETARCH=amd64` would pin every target
 # to an amd64 binary.
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar patch && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -21,10 +21,6 @@ RUN curl -fL --retry 6 --retry-delay 5 --retry-all-errors \
     rm -f /tmp/bchd.tar.gz
 
 WORKDIR /build/bchd
-COPY patches/fix-getblocktemplate-upgrade9.patch /tmp/
-# Fix: CheckConnectBlockTemplate omits BFUpgrade9 flag, causing getblocktemplate
-# to enforce the old 100-byte minimum instead of the post-upgrade9 65-byte one.
-RUN patch -p1 < /tmp/fix-getblocktemplate-upgrade9.patch
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/bchd . && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/bchctl ./cmd/bchctl && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /usr/local/bin/gencerts ./cmd/gencerts
