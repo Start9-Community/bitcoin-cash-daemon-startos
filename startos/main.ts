@@ -384,20 +384,30 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // (Per-index rebuild progress is emitted from the primary daemon's
           // ready poll, which runs during the catch-up while RPC is down.)
 
-          // Mirrors the BCHN reference: read getblockchaininfo and use the node's
-          // own initialblockdownload flag as the source of truth. BCHD omits
-          // initialblockdownload (omitempty) when synced, so absent = synced.
+          // BCHD has no `initialblockdownload`. Core's IBD flag is absent from
+          // its getblockchaininfo entirely — the response carries blocks,
+          // headers, syncheight, verificationprogress, chain, difficulty,
+          // mediantime, bestblockhash, pruned and the softfork maps, and
+          // nothing else — so reading it always got `undefined` and this check
+          // reported Synced from the first answered RPC call, at any height.
+          //
+          // `syncheight` is BCHD's own field for the best height it has seen
+          // from its peers, and is what tells the two apart. `headers` does
+          // not: BCHD advances it in step with `blocks`, so mid-sync they are
+          // equal (verified at 99211/99211 with syncheight 318723).
           try {
             const res = await rpcWithRetry('getblockchaininfo')
             if (res.exitCode !== 0)
               return { message: 'Waiting for sync info', result: 'loading' }
             const info = JSON.parse(res.stdout.toString()) as {
               blocks: number
-              initialblockdownload?: boolean
+              syncheight?: number
               verificationprogress?: number
               pruned?: boolean
             }
-            if (info.initialblockdownload) {
+            // A node with no peers reports syncheight 0, which is not evidence
+            // of being behind — regtest never has any.
+            if ((info.syncheight ?? 0) > info.blocks) {
               const pct = ((info.verificationprogress ?? 0) * 100).toFixed(2)
               return {
                 message: `Syncing blocks... ${pct}% (${netLabel})`,
