@@ -18,8 +18,8 @@ type BchdInfo = {
 type BchdBlockchainInfo = {
   blocks?: number
   headers?: number
+  syncheight?: number
   verificationprogress?: number
-  initialblockdownload?: boolean
   pruned?: boolean
 }
 
@@ -58,12 +58,14 @@ export const runtimeInfo = sdk.Action.withoutInput(
           '-c',
           `test -f ${rootDir}/rpc.cert || gencerts --directory=${rootDir} --force`,
         ])
+        // BCHD's native RPC is TLS-only, so `--notls` failed every call here
+        // and the action returned an empty body. Cert is the one above.
         const cliBase = [
           'bchctl',
           `--rpcserver=127.0.0.1:${rpcPort}`,
           `--rpcuser=${rpcUser}`,
           `--rpcpass=${rpcPassword}`,
-          '--notls',
+          `--rpccert=${rootDir}/rpc.cert`,
         ]
 
         const [infoRes, chainRes, peersRes] = await Promise.all([
@@ -102,10 +104,15 @@ export const runtimeInfo = sdk.Action.withoutInput(
           lines.push(
             `Chain: ${chain.pruned ? 'pruned' : 'archival'} ${network}`,
           )
-          lines.push(`Blocks: ${chain.blocks ?? '?'} / ${chain.headers ?? '?'}`)
+          // `syncheight` is the best height BCHD's peers have offered. Not
+          // `headers`, which it advances in step with `blocks`, and not
+          // `initialblockdownload`, which BCHD does not publish.
+          const blocks = chain.blocks ?? 0
+          const target = chain.syncheight ?? 0
           const vp = chain.verificationprogress ?? 0
+          lines.push(`Blocks: ${blocks} / ${target || (chain.headers ?? '?')}`)
           lines.push(
-            `Sync: ${chain.initialblockdownload ? `${(vp * 100).toFixed(2)}%` : 'Complete'}`,
+            `Sync: ${target > blocks ? `${(vp * 100).toFixed(2)}%` : 'Complete'}`,
           )
         }
 
