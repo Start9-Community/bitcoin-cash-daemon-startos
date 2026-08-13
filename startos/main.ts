@@ -384,17 +384,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
           // (Per-index rebuild progress is emitted from the primary daemon's
           // ready poll, which runs during the catch-up while RPC is down.)
 
-          // BCHD has no `initialblockdownload`. Core's IBD flag is absent from
-          // its getblockchaininfo entirely — the response carries blocks,
-          // headers, syncheight, verificationprogress, chain, difficulty,
-          // mediantime, bestblockhash, pruned and the softfork maps, and
-          // nothing else — so reading it always got `undefined` and this check
-          // reported Synced from the first answered RPC call, at any height.
-          //
-          // `syncheight` is BCHD's own field for the best height it has seen
-          // from its peers, and is what tells the two apart. `headers` does
-          // not: BCHD advances it in step with `blocks`, so mid-sync they are
-          // equal (verified at 99211/99211 with syncheight 318723).
+          // BCHD publishes no `initialblockdownload`, so testing it read
+          // undefined and reported Synced at any height. `syncheight` is its
+          // own field for the best height its peers have offered; `headers` is
+          // not usable — BCHD advances that in step with `blocks`.
           try {
             const res = await rpcWithRetry('getblockchaininfo')
             if (res.exitCode !== 0)

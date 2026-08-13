@@ -58,11 +58,8 @@ export const runtimeInfo = sdk.Action.withoutInput(
           '-c',
           `test -f ${rootDir}/rpc.cert || gencerts --directory=${rootDir} --force`,
         ])
-        // BCHD's native RPC is TLS-only — the plaintext proxy daemon exists
-        // precisely because of that — so `--notls` made every call here fail
-        // with "client sent an HTTP request to an HTTPS server", leaving this
-        // action to return its title and nothing else. The certificate is the
-        // self-signed one generated just above.
+        // BCHD's native RPC is TLS-only, so `--notls` failed every call here
+        // and the action returned an empty body. Cert is the one above.
         const cliBase = [
           'bchctl',
           `--rpcserver=127.0.0.1:${rpcPort}`,
@@ -107,11 +104,9 @@ export const runtimeInfo = sdk.Action.withoutInput(
           lines.push(
             `Chain: ${chain.pruned ? 'pruned' : 'archival'} ${network}`,
           )
-          // `syncheight` is the best height BCHD has seen from its peers, and
-          // `blocks` how far it has got. Not `headers`, which BCHD advances in
-          // step with `blocks` — and not Core's `initialblockdownload`, which
-          // BCHD does not publish at all, so testing it always read undefined
-          // and reported Complete at every height.
+          // `syncheight` is the best height BCHD's peers have offered. Not
+          // `headers`, which it advances in step with `blocks`, and not
+          // `initialblockdownload`, which BCHD does not publish.
           const blocks = chain.blocks ?? 0
           const target = chain.syncheight ?? 0
           const vp = chain.verificationprogress ?? 0
