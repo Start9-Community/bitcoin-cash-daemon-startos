@@ -1,365 +1,323 @@
-<div align="center">
-  <img src="assets/bchd-logo.svg" alt="BCHD logo" width="21%" />
-  <h1>Bitcoin Cash Daemon (BCHD)</h1>
-</div>
+<p align="center">
+  <img src="assets/bchd-logo.svg" alt="BCHD Logo" width="21%">
+</p>
 
-> **Upstream docs:** [github.com/gcash/bchd](https://github.com/gcash/bchd)
->
-> BCHD is a full node implementation of the Bitcoin Cash protocol written in Go. It provides JSON-RPC, gRPC with pub/sub notifications, BIP 157/158 compact block filters (Neutrino), BIP 37 bloom filters, full transaction and address indexes, and Tor support for private peer connections.
+# Bitcoin Cash Daemon on StartOS
+
+> Everything not listed in this document should behave the same as upstream
+> BCHD. If a feature, setting, or behavior is not mentioned here, the upstream
+> documentation is accurate and fully applicable — see the Documentation
+> section of `instructions.md` for links.
+
+[BCHD](https://github.com/gcash/bchd) is a full-node implementation of the Bitcoin Cash protocol written in Go, with JSON-RPC, a gRPC API with pub/sub, BIP 157/158 compact block filters, and BIP 37 bloom filters. This package builds it from source, runs it on any of five BCH networks, and adds a plaintext RPC proxy for mining software that cannot speak TLS.
+
+- **Upstream repo:** <https://github.com/gcash/bchd>
+- **Wrapper repo:** <https://github.com/Start9-Community/bitcoin-cash-daemon-startos>
 
 ---
 
 ## Table of Contents
 
-1. [Image and Container Runtime](#1-image-and-container-runtime)
-2. [Volume and Data Layout](#2-volume-and-data-layout)
-3. [Installation and First-Run Flow](#3-installation-and-first-run-flow)
-4. [Default Networking](#4-default-networking)
-5. [Configuration Management](#5-configuration-management)
-6. [Network Access and Interfaces](#6-network-access-and-interfaces)
-7. [Actions (StartOS UI)](#7-actions-startos-ui)
-8. [Backups and Restore](#8-backups-and-restore)
-9. [Health Checks](#9-health-checks)
-10. [Dependencies](#10-dependencies)
-11. [Default Overrides](#11-default-overrides)
-12. [Limitations and Differences](#12-limitations-and-differences)
-13. [What Is Unchanged from Upstream](#13-what-is-unchanged-from-upstream)
-14. [Contributing](#14-contributing)
-15. [Quick Reference for AI Consumers](#15-quick-reference-for-ai-consumers)
+- [Image and Container Runtime](#image-and-container-runtime)
+- [Volume and Data Layout](#volume-and-data-layout)
+- [File Models](#file-models)
+- [Dependencies](#dependencies)
+- [Network Access and Interfaces](#network-access-and-interfaces)
+- [Installation and First-Run Flow](#installation-and-first-run-flow)
+- [Actions](#actions)
+- [Tasks](#tasks)
+- [Health Checks](#health-checks)
+- [Backups and Restore](#backups-and-restore)
+- [Limitations and Differences](#limitations-and-differences)
+- [Quick Reference for AI Consumers](#quick-reference-for-ai-consumers)
 
 ---
 
-## 1. Image and Container Runtime
+## Image and Container Runtime
 
-| Field             | Value                                                                                                                                           |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Image ID**      | `bchd`                                                                                                                                          |
-| **Build**         | Multi-stage Docker build from `Dockerfile` — `bchd` is cross-compiled from upstream source (pure Go, `CGO_ENABLED=0`) in the `bchd-build` stage |
-| **Architectures** | `x86_64`, `aarch64`, `riscv64`                                                                                                                  |
-| **Command**       | `bchd --configfile=/data/bchd.conf --datadir=/data --rpclisten=0.0.0.0:PORT --listen=0.0.0.0:PORT ...`                                          |
-| **Sidecar**       | `stunnel4` in a second SubContainer — accepts plaintext RPC on port 8334, forwards to BCHD TLS RPC on 8332                                      |
+One image, built here from upstream source. Because BCHD is pure Go, the build cross-compiles natively for every target rather than emulating one — which is why this package can offer riscv64 where most cannot.
+
+| Property      | Value                                                             |
+| ------------- | ----------------------------------------------------------------- |
+| Image         | Built from this repo's `Dockerfile`                               |
+| Architectures | x86_64, aarch64, riscv64                                          |
+| Command       | `bchd`, with every setting passed as a flag rather than inherited |
+
+| Subcontainer  | Purpose                                                              |
+| ------------- | -------------------------------------------------------------------- |
+| `node-sub`    | The `bchd` daemon — the one to `attach` to, and where `bchctl` lives |
+| `stunnel-sub` | The plaintext RPC proxy                                              |
+
+The image also ships `bchctl` and `gencerts`, which the package uses for its health checks and for generating the node's TLS certificate.
+
+**Almost nothing is read from the config file at run time.** `bchd.conf` is where settings are _stored_, but `main.ts` reads it and passes the result as command-line flags, so the effective configuration is always what the package assembled at start — not whatever a hand edit put in the file.
+
+## Volume and Data Layout
+
+One volume, holding the chain and everything else.
+
+| Volume | Mount Point | Purpose                                                        |
+| ------ | ----------- | -------------------------------------------------------------- |
+| `main` | `/data`     | Blockchain, chainstate, indexes, config, credentials, TLS keys |
+
+| Path                       | Written by                 | Holds                                      |
+| -------------------------- | -------------------------- | ------------------------------------------ |
+| `bchd.conf`                | The package                | Node configuration                         |
+| `store.json`               | The package                | Package state: network, credentials, flags |
+| `rpc.cert` / `rpc.key`     | `gencerts`, on first start | The node's self-signed TLS certificate     |
+| `mainnet/`, `testnet3/`, … | BCHD                       | One data directory per network             |
+| `logs/<network>/`          | BCHD                       | The node's own logs                        |
+
+**Each network keeps its own directory**, so switching networks does not destroy the chain you already have — mainnet data survives a trip to chipnet and back.
+
+The volume is marked NoCOW (`chattr +C`) on first start. That matters on btrfs, where copy-on-write plus a blockchain's sequential append pattern fragments the filesystem badly. It is applied best-effort: a filesystem that does not support it logs a warning and start-up continues.
+
+## File Models
+
+Two models, and the division between them is not arbitrary: `bchd.conf` holds what upstream considers configuration, `store.json` holds what only StartOS knows.
+
+| File         | Format | Modelled                | Written by                  |
+| ------------ | ------ | ----------------------- | --------------------------- |
+| `bchd.conf`  | INI    | Yes — `FileHelper.ini`  | Init and the config actions |
+| `store.json` | JSON   | Yes — `FileHelper.json` | Init, actions, and `main`   |
+
+**`bchd.conf`** carries the index toggles, cache sizes, peer limits, filter settings, and relay policy. A hand edit is not rejected, but it is not authoritative either: the package re-reads the file each start and translates it into flags, and any action that touches a setting rewrites its key.
+
+INI values come back as **strings**, which the model normalizes: `"0"`/`"1"`/`"true"` all coerce to a numeric `0`/`1`. Without that, a flag set to `0` would fail a numeric comparison and silently fall through to its default — meaning a setting could not be turned off at all.
+
+**`store.json`** carries what has no place in BCHD's own config: the selected network, the named RPC credential list, the Tor preferences, the prune depth, the advertised external addresses, and several one-shot flags (`reindexChainstate`, `fastSyncUsed`, the per-index catch-up markers). `main` clears the reindex flag as it consumes it, so a reindex happens once rather than on every start.
+
+`rpc.cert` and `rpc.key` are generated, not modelled. They are created on first start only if absent, so they persist across restarts and travel in the backup — a client that pinned the certificate keeps working.
+
+**Legacy `externalip[]=` lines are stripped from `bchd.conf` at every start.** BCHD rejects them at config-parse time; external addresses are passed as flags from `store.json` instead. This is repair of an older layout, not a live feature.
+
+## Dependencies
+
+Tor, and **only while Tor routing is enabled**.
+
+| Setting                  | Tor dependency              |
+| ------------------------ | --------------------------- |
+| Tor Routing on (default) | Required, `kind: 'running'` |
+| Tor Routing off          | Not a dependency at all     |
+
+Tor exports no interface of its own, so the package resolves its SOCKS proxy over the internal bridge, with a fallback that keeps the address stable while Tor is absent or restarting. That fallback is what makes it safe to pass the Tor flags unconditionally: an unreachable proxy is a refused connection, not a start-up failure.
+
+The Tor **health check** tracks install and run state live, so installing or stopping Tor changes what the check reports without restarting the node.
+
+## Network Access and Interfaces
+
+Four interfaces, and their ports move with the selected network.
+
+| Interface           | Id              | Type | Mainnet Port | Description                                     |
+| ------------------- | --------------- | ---- | ------------ | ----------------------------------------------- |
+| RPC Interface       | `rpc`           | api  | 8332         | JSON-RPC over TLS                               |
+| Peer Interface      | `peer`          | p2p  | 8333         | The Bitcoin Cash P2P network                    |
+| RPC Plaintext Proxy | `rpc-plaintext` | api  | 8334         | JSON-RPC without TLS, for miners                |
+| gRPC Interface      | `grpc`          | api  | 8335         | Compact filters and pub/sub — only when enabled |
+
+| Network  | RPC   | Peer  | gRPC  |
+| -------- | ----- | ----- | ----- |
+| mainnet  | 8332  | 8333  | 8335  |
+| testnet3 | 18332 | 18333 | 18335 |
+| testnet4 | 28332 | 28333 | 28335 |
+| chipnet  | 48334 | 48333 | 48335 |
+| regtest  | 18444 | 18445 | 18446 |
+
+The plaintext proxy's port does **not** move with the network; it is always 8334.
+
+**RPC and gRPC are declared as pass-through TLS**, not as HTTP. BCHD terminates TLS itself with its own self-signed certificate, and StartOS forwards raw TLS to it rather than proxying HTTP. Declaring them as HTTP made the reverse proxy probe the backend every half minute, filling the log with handshake errors and breaking gRPC forwarding outright. A client must therefore trust the self-signed certificate or skip verification.
+
+**The plaintext proxy exists for one reason.** ckpool-lineage mining software — asicseer-pool, ckpool — has no TLS library at all and can only speak plain HTTP JSON-RPC. The proxy accepts plaintext and forwards it to BCHD's TLS RPC over loopback inside the service, so TLS is never actually absent on BCHD's side; it just terminates one hop earlier. When upstream miners gain TLS, this daemon and its interface go away together.
+
+The gRPC interface is exported only when gRPC is enabled, so its absence from the address list is a configuration state rather than a fault.
+
+## Installation and First-Run Flow
+
+Install seeds `bchd.conf`, generates a random RPC credential named **Default**, and turns Tor routing on. There is no task and no wizard; the node starts syncing mainnet immediately.
+
+Start-up runs a oneshot first: it creates the data directory, applies the NoCOW attribute, generates the TLS certificate if it is missing, and strips any legacy external-IP lines. The node then starts, followed by the plaintext proxy.
+
+**Initial sync is the long part**, and two settings decide how long. The defaults — transaction index on, Fast Sync off — give a complete, useful node that takes a day or two on mainnet. The alternatives are covered under [Actions](#actions), and one of them is irreversible.
+
+Once the sync completes, the package records it and turns Fast Sync off if it was on.
+
+## Actions
+
+Thirteen actions in four groups, plus one hidden. The ones that matter most are in **Node Settings**, because two of its toggles have permanent consequences.
+
+### Node Info — ungrouped
+
+Reports version, network, peer count, and sync progress from the running node. Read-only, `only-running`, immediate.
+
+### Chain Network — Configuration
+
+Switches which BCH network the node runs: mainnet, testnet3, testnet4, chipnet, or regtest.
+
+- **What it changes:** `network` in the store, and with it every interface's port and the data directory in use.
+- **Cost:** **restarts immediately**, and the newly selected network syncs from scratch if it has no prior data.
+- **Repeat safety:** idempotent, and a no-op when the selection is unchanged. Existing data for other networks is preserved, not deleted.
+
+### Node Settings — Configuration
+
+Indexes, pruning, Fast Sync, gRPC, filters, and cache sizes.
+
+- **What it changes:** most of `bchd.conf`, plus `pruneDepth` and the index catch-up markers in the store.
+- **Cost:** applies on the next start. Turning an index **on** makes the next start rebuild it from genesis before the RPC server comes up, which can take a long time and is not interruptible.
+- **Repeat safety:** idempotent — except that Fast Sync is not, see below.
+
+Three constraints are enforced here rather than left to fail at run time, because BCHD hard-exits on the conflicting combinations:
+
+- **Address Index requires Transaction Index**, and is the slow one. It can turn a two-day sync into weeks. Most consumers, including Fulcrum and typical explorers, build their own address index and do not need it.
+- **Pruning forces both indexes off.**
+- **Fast Sync forces both indexes off, and is permanent.** It skips every block before the latest checkpoint, so those blocks are never downloaded and cannot be indexed afterwards. Once it has been used on a data directory, Transaction Index is locked out for the life of that directory — the action will refuse to enable it and say so. The only way back is Delete Mainnet Data and a full re-sync.
+
+### RPC & Peers Settings — Configuration
+
+Peer limits, allowed networks, onion-only mode, Tor routing, Tor stream isolation, and whether to advertise clearnet inbound addresses.
+
+- **What it changes:** `maxpeers` and `onlynet` in `bchd.conf`; the Tor and advertise flags in the store.
+- **Cost:** **restarts unconditionally**, even if nothing changed. The Tor flags live in the store, which `main` reads without watching, so a restart is the only thing that makes a Tor toggle take effect instead of leaving the running node's flags stale.
+- **Repeat safety:** idempotent.
+- **Worth knowing:** stream isolation gives a fresh circuit per peer, and causes aggressive peer churn during initial sync. It is off by default for that reason. Advertising clearnet inbound is also off by default, and respects the allowed-networks setting — an excluded network is never advertised.
+
+### Mempool & Block Policy — Configuration
+
+Excessive block size and minimum relay fee. Writes `bchd.conf` only, and does not restart; the values apply on the next start.
+
+### Credentials — three actions
+
+**View RPC Credentials** shows a stored credential's username, password, and port. **Generate RPC Credential** creates a new named one with a random password. **Delete RPC Credentials** removes one or more by name.
+
+- **The first credential in the list is the active one** — it is what the node actually authenticates with and what the health checks use. Generating a credential does not make it active, and deleting the first one changes which credential the node uses on its next start.
+- All three are available at any status and write only the store.
+- Deletion is permanent and has no undo.
+
+### Maintenance — four actions
+
+| Action                   | Availability   | What it does                                              |
+| ------------------------ | -------------- | --------------------------------------------------------- |
+| Reindex Chainstate       | any            | Rebuilds the UTXO set from existing blocks, then restarts |
+| Delete Peer List         | `only-stopped` | Removes the cached peer addresses                         |
+| Delete Test Network Data | any            | Deletes data for selected test networks                   |
+| Delete Mainnet Data      | any            | Deletes the entire mainnet data directory                 |
+
+- **Reindex Chainstate** sets a one-shot flag and restarts. It rebuilds only the UTXO set, not the block index, so it is much faster than a full re-download — hours rather than days — and is the right response to a corrupted chainstate with intact blocks. The flag is cleared as it is consumed, so it does not repeat.
+- **Delete Peer List** requires the service stopped, and the node rediscovers peers from DNS seeds on the next start. Expect a few minutes with no peers afterwards.
+- **Delete Test Network Data** takes a multiselect and **refuses to delete the network currently in use**, telling you to switch away first. Mainnet is not offered.
+- **Delete Mainnet Data** requires an explicit confirmation toggle and deletes the whole mainnet directory. Configuration and credentials survive. It also clears the Fast Sync marker, which is its real purpose: it is the only way to make Transaction Index available again after Fast Sync has been used.
+
+### Auto-Configure — hidden
+
+**Not user-facing.** It exists so a dependent package — Fulcrum, an explorer, a mining pool — can raise a task that sets exactly the BCHD settings it needs, with those fields pre-filled and locked. A support agent should never tell a user to go find it; they will encounter it as a task on this service's page, raised by another.
+
+## Tasks
+
+None. This package raises no tasks, so the service is never held on a prompt and its ordinary controls are always available.
+
+## Health Checks
+
+Eight checks. Three probe the node, and five report on state that would otherwise be invisible.
+
+| Check              | Displayed as          | Method                                         |
+| ------------------ | --------------------- | ---------------------------------------------- |
+| `primary`          | "RPC"                 | `bchctl getinfo` succeeds                      |
+| `sync-progress`    | "Blockchain Sync"     | `getblockchaininfo`, comparing height to peers |
+| `peer-connections` | "Peer Connections"    | `getpeerinfo`, counting inbound and outbound   |
+| `grpc`             | "gRPC"                | The gRPC port is in LISTEN state               |
+| `rpc-plaintext`    | "RPC Plaintext Proxy" | The proxy port is in LISTEN state              |
+| `tor`              | "Tor"                 | Configuration plus Tor's live package status   |
+| `clearnet`         | "Clearnet"            | Allowed networks plus advertised addresses     |
+| `i2p`              | "I2P"                 | Always disabled — not implemented              |
+
+**"Blockchain Sync" compares against `syncheight`, not `initialblockdownload`.** BCHD does not publish the latter, and reading it returned undefined — which made the node report Synced at any height. It also cannot use `headers`, because BCHD advances that in lockstep with `blocks`. A node with no peers reports `syncheight` 0, which is treated as "no information" rather than as being caught up; regtest is permanently in that state.
+
+**The gRPC and plaintext-proxy checks read `/proc` rather than opening a socket.** Both ports are TLS-terminating, and a bare TCP probe that connects and closes without a handshake makes the server log a handshake error every poll. Reading the kernel's socket table is zero-touch.
+
+**"Peer Connections" reports `loading`, not failure, below three peers.** A node that has just started legitimately has none.
+
+**"Tor" reports the specific reason it is not active** — disabled in config, not installed, not running, or excluded by the allowed-networks setting — and distinguishes outbound-only from inbound-and-outbound by whether an onion address is being advertised. It also flags one invalid combination outright: onion-only peer connections with Tor routing switched off.
+
+"Clearnet" makes the same outbound-only distinction, based on whether a public address is advertised.
+
+**Index rebuild progress appears in the logs, not in a check.** BCHD logs one aggregate line covering all indexes, so the package re-emits it labelled per index while a rebuild is pending. It comes from the RPC readiness poll rather than from the sync check, because an index rebuild happens _before_ the RPC server starts — which is exactly when the sync check cannot run.
+
+## Backups and Restore
+
+The `main` volume is copied, with three exclusions:
+
+| Excluded      | Why                                            |
+| ------------- | ---------------------------------------------- |
+| `/blocks`     | Re-downloadable from the network, and enormous |
+| `/chainstate` | Derived from blocks                            |
+| `/peers.json` | Rediscovered from DNS seeds                    |
+
+So the backup is the **configuration**, not the chain: `bchd.conf`, `store.json` with its credentials and network selection, and the TLS certificate and key.
+
+**A restored node re-syncs from scratch.** That is the deliberate trade — a backup measured in kilobytes instead of hundreds of gigabytes, at the cost of a full initial sync after a restore. Anything depending on this node's RPC will be unusable until that sync completes.
+
+The TLS certificate surviving is what stops a restore from breaking clients that pinned it, and the credential list surviving is what stops dependent packages from needing reconfiguration.
+
+## Limitations and Differences
+
+1. **No Double Spend Proof.** BCHD does not implement DSP relay. Mining operations that need it want Bitcoin Cash Node or Flowee instead.
+2. **Fast Sync is a one-way door.** Using it permanently prevents the Transaction Index on that data directory; recovering means deleting all mainnet data and re-syncing.
+3. **The Address Index is impractically slow.** It is off by default and should stay off unless something queries addresses from BCHD directly.
+4. **RPC and gRPC use a self-signed certificate.** Clients must trust it or skip verification.
+5. **The plaintext RPC proxy is a StartOS-only workaround** for mining software with no TLS support, and will be removed when upstream no longer needs it.
+6. **Blockchain data is not backed up**, by design.
+7. **I2P is not implemented.** The health check reports it as permanently disabled.
+8. **`bchd.conf` is not the live configuration.** The package translates it into flags at start, so hand edits are subordinate to what the actions write.
 
 ---
 
-## 2. Volume and Data Layout
-
-| Volume Name | Mount Point | Purpose                                                           |
-| ----------- | ----------- | ----------------------------------------------------------------- |
-| `main`      | `/data`     | All node data: blockchain, chainstate, configuration, credentials |
-
-**StartOS-managed files inside `/data`:**
-
-| File / Directory       | Managed By                        | Purpose                                                           |
-| ---------------------- | --------------------------------- | ----------------------------------------------------------------- |
-| `bchd.conf`            | StartOS SDK file model            | Main BCHD configuration file                                      |
-| `store.json`           | StartOS SDK file model            | Package state: network, credentials, reindex flags, `fullySynced` |
-| `rpc.cert` / `rpc.key` | `gencerts` oneshot on first start | Self-signed TLS certificate for RPC and gRPC                      |
-| `blocks/`              | BCHD                              | Raw block data                                                    |
-| `chainstate/`          | BCHD                              | UTXO set (derived from blocks)                                    |
-| `peers.json`           | BCHD                              | Cached peer addresses                                             |
-
----
-
-## 3. Installation and First-Run Flow
-
-1. StartOS builds or pulls the `bchd` container image.
-2. The `nocow` oneshot runs: creates `/data`, applies NoCOW filesystem attribute (`chattr +C`) for performance on btrfs, then calls `gencerts` to generate `rpc.cert`/`rpc.key` if absent.
-3. Any legacy `externalip[]=` lines are stripped from `bchd.conf` (BCHD rejects them at config parse; external IPs are now passed via CLI from `store.json`).
-4. Seed files are written: `bchd.conf` and `store.json` with defaults (network: mainnet, auto-generated RPC credentials).
-5. BCHD launches, connecting to the Bitcoin Cash mainnet P2P network and beginning Initial Block Download (IBD).
-6. The `stunnel4` sidecar starts in parallel, providing a plaintext RPC proxy on port 8334 for ckpool-lineage mining pool software.
-7. The Blockchain Sync health check reports progress during IBD.
-8. After IBD completes, `store.json` is updated with `fullySynced: true`; Tor proxy routing activates (if installed and configured).
-9. The `watchHosts` process monitors StartOS-assigned external addresses and passes them to BCHD as `--externalip` arguments.
-
----
-
-## 4. Default Networking
-
-| Transport                | Default                                                        | Inbound                                                        | How to Change                                                     |
-| ------------------------ | -------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
-| **Clearnet (IPv4/IPv6)** | Enabled — outbound only until an external IP is published      | Enabled automatically when StartOS assigns an external IP      | Automatic via StartOS host discovery (`watchHosts`)               |
-| **Tor**                  | Enabled (proxy is deferred until IBD completes for sync speed) | Enabled once a `.onion` address is advertised via `externalip` | Toggle in Network Settings action; requires Tor package installed |
-| **I2P**                  | Not implemented                                                | Not available                                                  | Not available                                                     |
-
----
-
-## 5. Configuration Management
-
-| Group                  | Settings Covered                                                                                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Chain Network**      | Network selection: mainnet, testnet3, chipnet, regtest — RPC/P2P/gRPC ports auto-adjust on restart                                                                |
-| **Node Settings**      | Transaction index, address index, pruning depth, gRPC API toggle, BIP 37 bloom filters, BIP 157/158 compact block filters, database cache size, DB flush interval |
-| **RPC Peers Settings** | Whitelist of IPs / subnets permitted to connect to the RPC interface                                                                                              |
-| **Mempool Settings**   | Mempool size limit, minimum relay fee, and related policy                                                                                                         |
-
----
-
-## 6. Network Access and Interfaces
-
-| Interface             | Port          | Protocol                 | Purpose                                                  | Condition                                          |
-| --------------------- | ------------- | ------------------------ | -------------------------------------------------------- | -------------------------------------------------- |
-| RPC Interface         | 8332          | HTTPS (TLS pass-through) | JSON-RPC API for wallets, tools, and dependent packages  | Always — mainnet                                   |
-| RPC Plaintext Proxy   | 8334          | HTTP                     | Plaintext JSON-RPC via stunnel for ckpool-lineage miners | Always                                             |
-| Peer Interface        | 8333          | TCP                      | P2P Bitcoin Cash network connections                     | Always — mainnet                                   |
-| gRPC Interface        | 8335          | HTTPS (TLS pass-through) | BCHD gRPC API — compact filters, pub/sub notifications   | Only when `grpclisten` is enabled in Node Settings |
-| RPC / Peer (testnet3) | 18332 / 18333 | HTTPS / TCP              | Testnet3                                                 | When network = testnet3                            |
-| gRPC (testnet3)       | 18335         | HTTPS                    | gRPC on testnet3                                         | When network = testnet3 and gRPC enabled           |
-| RPC / Peer (chipnet)  | 48334 / 48333 | HTTPS / TCP              | Chipnet                                                  | When network = chipnet                             |
-| gRPC (chipnet)        | 48335         | HTTPS                    | gRPC on chipnet                                          | When network = chipnet and gRPC enabled            |
-| RPC / Peer (regtest)  | 18444 / 18445 | HTTPS / TCP              | Regtest                                                  | When network = regtest                             |
-| gRPC (regtest)        | 18446         | HTTPS                    | gRPC on regtest                                          | When network = regtest and gRPC enabled            |
-
----
-
-## 7. Actions (StartOS UI)
-
-### Info
-
-| Action ID      | Name      | Description                                                                                                                                |
-| -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `runtime-info` | Node Info | Displays version, protocol version, relay fee, peer count, chain, sync progress via `bchctl getinfo` / `getblockchaininfo` / `getpeerinfo` |
-
-### Configuration
-
-| Action ID            | Name               | Description                                                                                          |
-| -------------------- | ------------------ | ---------------------------------------------------------------------------------------------------- |
-| `network-settings`   | Chain Network      | Select BCH network (mainnet / testnet3 / chipnet / regtest); all ports auto-adjust on restart        |
-| `node-settings`      | Node Settings      | Transaction index, pruning, gRPC toggle, bloom filters, compact filters, DB cache, DB flush interval |
-| `rpc-peers-settings` | RPC Peers Settings | Whitelist IPs and subnets allowed to access the RPC interface                                        |
-| `mempool-settings`   | Mempool Settings   | Max mempool size, minimum relay fee, and mempool expiry policy                                       |
-
-### Credentials
-
-| Action ID                 | Name                    | Description                                                               |
-| ------------------------- | ----------------------- | ------------------------------------------------------------------------- |
-| `view-rpc-credentials`    | View RPC Credentials    | Select a stored credential by name to reveal username, password, and port |
-| `generate-rpc-credential` | Generate RPC Credential | Create a new named RPC credential (random password)                       |
-| `delete-rpc-credentials`  | Delete RPC Credentials  | Remove a named credential from `store.json`                               |
-
-### Maintenance
-
-| Action ID                  | Name                     | Description                                                                |
-| -------------------------- | ------------------------ | -------------------------------------------------------------------------- |
-| `reindex-blockchain`       | Reindex Blockchain       | Delete chainstate and re-verify every block from genesis; takes many hours |
-| `reindex-chainstate`       | Reindex Chainstate       | Rebuild the UTXO set only — faster than a full blockchain reindex          |
-| `delete-peers`             | Delete Peer List         | Remove cached `peers.json`; BCHD rebuilds peer discovery on next start     |
-| `delete-test-network-data` | Delete Test Network Data | Wipe data directory for the currently selected test network                |
-
-### Hidden (cross-package)
-
-| Action ID    | Name           | Description                                                                                                  |
-| ------------ | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `autoconfig` | Auto-Configure | Called by dependent packages (Fulcrum, Explorer, ASICSeer, EloPool) to retrieve and validate RPC credentials |
-
----
-
-## 8. Backups and Restore
-
-**What IS backed up:**
-
-- `bchd.conf` — node configuration
-- `store.json` — credentials, network selection, reindex flags, sync state
-- `rpc.cert` / `rpc.key` — TLS certificates
-- Any other files in `/data` not listed below
-
-**What is NOT backed up:**
-
-- `/blocks` — raw blockchain data (too large; re-downloaded after restore)
-- `/chainstate` — UTXO set (derived from blocks; rebuilt automatically)
-- `/peers.json` — peer address cache (rebuilt on next connection)
-
-Restoring overwrites current configuration. Blockchain data is not included and will be re-synced from genesis automatically after restore.
-
----
-
-## 9. Health Checks
-
-| Check                   | Method                                                                                                                      | Key Messages                                                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **RPC** (daemon ready)  | `bchctl getinfo`                                                                                                            | `BCHD RPC is ready` / `BCHD RPC is starting...`                                                                                                |
-| **Blockchain Sync**     | `bchctl getblockchaininfo` — reads `verificationprogress`, `initialblockdownload`, `mediantime` (stale > 2 h means syncing) | `Synced — block N` / `Syncing blocks... X.XX% (N/M)`                                                                                           |
-| **Peer Connections**    | `bchctl getpeerinfo` — counts total and inbound peers                                                                       | `N peers (X outbound, Y inbound)` / `No peers connected` / `Only N peer(s) connected`                                                          |
-| **gRPC**                | `/proc/net/tcp` port-listen probe (avoids TLS handshake noise)                                                              | `gRPC API is listening on port 8335` / `gRPC API is disabled` / `gRPC API is starting up...`                                                   |
-| **RPC Plaintext Proxy** | `/proc/net/tcp` port-listen probe                                                                                           | `Plaintext RPC proxy ready on port 8334 (stunnel → BCHD TLS)` / `Plaintext RPC proxy starting...`                                              |
-| **Tor**                 | Store flags + `sdk.getStatus(tor)`                                                                                          | `Tor proxy active — inbound and outbound` / `Tor proxy configured — will activate after IBD` / `Tor routing deferred` / `Tor is not installed` |
-| **Clearnet**            | `onlynet` config + `externalip` list                                                                                        | `Inbound and outbound connections` / `Outbound only. Publish an IP address to enable inbound.`                                                 |
-| **I2P**                 | Static                                                                                                                      | `I2P support is not implemented yet.` (always disabled)                                                                                        |
-
----
-
-## 10. Dependencies
-
-### Tor (optional)
-
-| Field                  | Value                                                                                                                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Package ID**         | `tor`                                                                                                                                                                                                                             |
-| **Version constraint** | `>=0.4.9.11:2`                                                                                                                                                                                                                    |
-| **Required state**     | Running (optional — used only when enabled in Chain Network settings)                                                                                                                                                             |
-| **Address resolution** | SOCKS proxy address resolved reactively over the LXC bridge via `sdk.host.getBridgeAddress` (Tor's `socks` host, `.const()`); install/run state tracked via `sdk.getStatus`                                                        |
-| **Mounted volumes**    | None                                                                                                                                                                                                                              |
-| **Purpose**            | Provides a SOCKS5 proxy reachable over the internal service bridge (`<osIp>:9050`) for Tor-routed P2P and inbound `.onion` connections. Proxy activation is deferred until `fullySynced = true` to avoid IBD performance penalty. |
-
----
-
-## 11. Default Overrides
-
-| Setting              | Upstream Default               | StartOS Value                               | Reason                                                                                                         |
-| -------------------- | ------------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| RPC TLS              | Optional (`--notls` available) | Always enabled via `--rpccert` / `--rpckey` | StartOS binds RPC to `0.0.0.0`; BCHD warns against `--notls` on non-localhost; avoids log noise on every start |
-| Tor proxy activation | Immediate on configure         | Deferred until `fullySynced = true`         | IBD via Tor is prohibitively slow; proxy activates automatically after the first full sync completes           |
-| `--externalip`       | Not set                        | Written from `store.json` by `watchHosts`   | Ensures BCHD advertises the actual StartOS-assigned addresses (clearnet and/or Tor)                            |
-| Plaintext RPC proxy  | Not present                    | `stunnel4` sidecar on port 8334             | ckpool-lineage mining software (ASICSeer, EloPool) has no TLS library                                          |
-| Filesystem attribute | Default (CoW)                  | NoCOW via `chattr +C`                       | Blockchain sequential writes cause heavy fragmentation on btrfs Copy-on-Write filesystems                      |
-
----
-
-## 12. Limitations and Differences
-
-1. BCHD does **not** implement Double Spend Proof (DSP). Mining operations that require DSP relay should use Bitcoin Cash Node (BCHN) or Flowee.
-2. Supported networks are **mainnet, testnet3, chipnet, and regtest only**. Testnet4 and scalenet are not supported by the upstream `gcash/bchd` codebase.
-3. gRPC is **disabled by default** and must be explicitly enabled in Node Settings. This reduces resource usage for nodes that do not need the gRPC API.
-4. The RPC server uses a **self-signed TLS certificate** (`rpc.cert`). Clients that perform TLS certificate verification must either trust this certificate or configure skip-verify.
-5. **Pruning disables the transaction index.** Enabling the prune option in Node Settings automatically forces `txindex` and `addrindex` off.
-6. **Tor proxy is not active during Initial Block Download.** This is intentional — IBD via Tor is too slow on most hardware. Tor routing begins automatically once `fullySynced = true` is written to `store.json`.
-7. The **plaintext RPC proxy on port 8334** (stunnel sidecar) is a StartOS-only workaround. Once upstream ckpool-lineage software gains TLS support, this sidecar and the `rpc-plaintext` interface will be removed in a single commit.
-
----
-
-## 13. What Is Unchanged from Upstream
-
-- All Bitcoin Cash consensus rules and network protocols implemented in `gcash/bchd`
-- Full JSON-RPC API compatibility with upstream `bchd`
-- gRPC API with pub/sub notifications and compact block filter support
-- BIP 157/158 Neutrino (compact block filters) behavior
-- BIP 37 bloom filter support
-- Transaction index (`txindex`) and address index (`addrindex`) functionality
-- Peer connection logic, DNS seeding, and ban management
-- Configuration file format (`bchd.conf`)
-
----
-
-## 14. Contributing
-
-Build and development workflow follow the StartOS packaging guide: <https://docs.start9.com/packaging>. Keep `README.md`, `instructions.md`, and `AGENTS.md` in sync with any change to user-visible behavior or package structure.
-
----
-
-## 15. Quick Reference for AI Consumers
+## Quick Reference for AI Consumers
 
 ```yaml
 package_id: bchd
-title: Bitcoin Cash Daemon
-license: ISC
-upstream_repo: https://github.com/gcash/bchd
-package_repo: https://github.com/BitcoinCash1/bitcoin-cash-daemon-startos
-image:
-  id: bchd
-  build: dockerfile
-  source: Dockerfile (bchd cross-compiled from source)
+image: built from ./Dockerfile # bchd cross-compiled from upstream Go source
 architectures:
   - x86_64
   - aarch64
   - riscv64
+subcontainers:
+  - node-sub # the bchd daemon
+  - stunnel-sub # the plaintext RPC proxy
 volumes:
-  - name: main
-    mountpoint: /data
-    purpose: blockchain data, config, credentials
-ports:
-  - interface: rpc
-    port: 8332
-    protocol: https
-    purpose: JSON-RPC over TLS
-    condition: always (mainnet)
-  - interface: rpc-plaintext
-    port: 8334
-    protocol: http
-    purpose: plaintext RPC proxy (stunnel) for mining pool software
-    condition: always
-  - interface: peer
-    port: 8333
-    protocol: tcp
-    purpose: P2P Bitcoin Cash network
-    condition: always (mainnet)
-  - interface: grpc
-    port: 8335
-    protocol: https
-    purpose: gRPC API over TLS
-    condition: when grpclisten is enabled in Node Settings
-networks_supported:
-  mainnet: { rpc: 8332, peer: 8333, grpc: 8335 }
-  testnet3: { rpc: 18332, peer: 18333, grpc: 18335 }
-  chipnet: { rpc: 48334, peer: 48333, grpc: 48335 }
-  regtest: { rpc: 18444, peer: 18445, grpc: 18446 }
+  main: /data
+file_models:
+  - bchd.conf
+  - store.json
+  # rpc.cert / rpc.key are generated on first start, not modelled
+startos_managed_env_vars: [] # every setting is passed as a bchd flag
 dependencies:
-  tor:
-    optional: true
-    purpose: SOCKS5 proxy for Tor-routed P2P and inbound .onion connections
-startos_managed_files:
-  - /data/bchd.conf
-  - /data/store.json
-  - /data/rpc.cert
-  - /data/rpc.key
+  - tor # required only while Tor routing is enabled; kind: running
+interfaces:
+  rpc: { type: api, port: 8332 } # TLS pass-through
+  peer: { type: p2p, port: 8333 }
+  rpc-plaintext: { type: api, port: 8334 } # always 8334, all networks
+  grpc: { type: api, port: 8335 } # exported only when gRPC is enabled
 actions:
-  - { id: runtime-info, name: 'Node Info', group: Info }
-  - { id: network-settings, name: 'Chain Network', group: Configuration }
-  - { id: node-settings, name: 'Node Settings', group: Configuration }
-  - { id: rpc-peers-settings, name: 'RPC Peers Settings', group: Configuration }
-  - { id: mempool-settings, name: 'Mempool Settings', group: Configuration }
-  - {
-      id: view-rpc-credentials,
-      name: 'View RPC Credentials',
-      group: Credentials,
-    }
-  - {
-      id: generate-rpc-credential,
-      name: 'Generate RPC Credential',
-      group: Credentials,
-    }
-  - {
-      id: delete-rpc-credentials,
-      name: 'Delete RPC Credentials',
-      group: Credentials,
-    }
-  - { id: reindex-blockchain, name: 'Reindex Blockchain', group: Maintenance }
-  - { id: reindex-chainstate, name: 'Reindex Chainstate', group: Maintenance }
-  - { id: delete-peers, name: 'Delete Peer List', group: Maintenance }
-  - {
-      id: delete-test-network-data,
-      name: 'Delete Test Network Data',
-      group: Maintenance,
-    }
-  - { id: autoconfig, name: 'Auto-Configure', group: hidden }
+  - runtime-info
+  - network-settings
+  - node-settings
+  - rpc-peers-settings
+  - mempool-settings
+  - view-rpc-credentials
+  - generate-rpc-credential
+  - delete-rpc-credentials
+  - reindex-chainstate
+  - delete-peers
+  - delete-test-network-data
+  - delete-mainnet-data
+  - autoconfig # hidden; called by dependent packages
+tasks: []
 health_checks:
-  - { id: primary, display: 'RPC', method: 'bchctl getinfo' }
-  - {
-      id: sync-progress,
-      display: 'Blockchain Sync',
-      method: 'bchctl getblockchaininfo',
-    }
-  - {
-      id: peer-connections,
-      display: 'Peer Connections',
-      method: 'bchctl getpeerinfo',
-    }
-  - { id: grpc, display: 'gRPC', method: '/proc/net/tcp port-listen probe' }
-  - {
-      id: rpc-plaintext,
-      display: 'RPC Plaintext Proxy',
-      method: '/proc/net/tcp port-listen probe',
-    }
-  - { id: tor, display: 'Tor', method: 'store flags + Tor package status' }
-  - {
-      id: clearnet,
-      display: 'Clearnet',
-      method: 'onlynet config + externalip list',
-    }
-  - { id: i2p, display: 'I2P', method: 'static disabled' }
-backup_volumes:
-  - main
-backup_excludes:
-  - /blocks
-  - /chainstate
-  - /peers.json
+  - primary # displayed "RPC"
+  - sync-progress # displayed "Blockchain Sync"
+  - peer-connections # displayed "Peer Connections"
+  - grpc # displayed "gRPC"
+  - rpc-plaintext # displayed "RPC Plaintext Proxy"
+  - tor # displayed "Tor"
+  - clearnet # displayed "Clearnet"
+  - i2p # displayed "I2P"; always disabled
 ```

@@ -36,6 +36,7 @@ For mining software (ASICSeer, EloPool, ckpool) that has no TLS library, the
 connections to BCHD's native TLS RPC transparently.
 
 To mint credentials for an external wallet or app:
+
 - **Actions → Generate RPC Credential** — create a username/password pair.
 - **Actions → View RPC Credentials** — display existing credentials.
 - **Actions → Delete RPC Credential** — revoke a credential.
@@ -71,18 +72,18 @@ All settings live under **Config** in the service interface.
 
 ## Ports
 
-| Port  | Protocol        | Purpose                                        |
-|-------|-----------------|------------------------------------------------|
-| 8332  | JSON-RPC (TLS)  | RPC API — mainnet                              |
-| 8333  | P2P             | Peer-to-peer — mainnet                         |
-| 8334  | HTTP plaintext  | RPC Plaintext Proxy (stunnel → port 8332 TLS)  |
-| 8335  | gRPC (TLS)      | gRPC API — Neutrino light clients              |
-| 18332 | JSON-RPC (TLS)  | RPC API — testnet3                             |
-| 18333 | P2P             | Peer-to-peer — testnet3                        |
-| 48332 | JSON-RPC (TLS)  | RPC API — chipnet                              |
-| 48333 | P2P             | Peer-to-peer — chipnet                         |
-| 18443 | JSON-RPC (TLS)  | RPC API — regtest                              |
-| 18444 | P2P             | Peer-to-peer — regtest                         |
+| Port  | Protocol       | Purpose                                       |
+| ----- | -------------- | --------------------------------------------- |
+| 8332  | JSON-RPC (TLS) | RPC API — mainnet                             |
+| 8333  | P2P            | Peer-to-peer — mainnet                        |
+| 8334  | HTTP plaintext | RPC Plaintext Proxy (stunnel → port 8332 TLS) |
+| 8335  | gRPC (TLS)     | gRPC API — Neutrino light clients             |
+| 18332 | JSON-RPC (TLS) | RPC API — testnet3                            |
+| 18333 | P2P            | Peer-to-peer — testnet3                       |
+| 48332 | JSON-RPC (TLS) | RPC API — chipnet                             |
+| 48333 | P2P            | Peer-to-peer — chipnet                        |
+| 18443 | JSON-RPC (TLS) | RPC API — regtest                             |
+| 18444 | P2P            | Peer-to-peer — regtest                        |
 
 ## Limitations
 
