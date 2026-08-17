@@ -9,10 +9,6 @@ export const manifest = setupManifest({
   upstreamRepo: 'https://github.com/gcash/bchd',
   marketingUrl: 'https://bchd.cash',
   donationUrl: null,
-  docsUrls: [
-    'https://github.com/BitcoinCash1/bitcoin-cash-daemon-startos/blob/master/instructions.md',
-    'https://github.com/gcash/bchd',
-  ],
   description: {
     short: 'BCHD — Go-based Bitcoin Cash full node with gRPC and Neutrino',
     long: 'BCHD is a full node implementation of the Bitcoin Cash protocol written in Go. Features include JSON-RPC API, gRPC API with pub/sub notifications, BIP 157/158 compact block filters (Neutrino), BIP 37 bloom filters, full transaction and address indexes, and Tor support for private peer connections.',
