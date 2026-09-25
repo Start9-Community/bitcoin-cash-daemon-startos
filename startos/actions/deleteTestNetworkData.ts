@@ -95,7 +95,7 @@ export const deleteTestNetworkData = sdk.Action.withInput(
       async (sub) => {
         for (const net of selected) {
           for (const path of pathsFor(net)) {
-            await sub.exec(['rm', '-rf', path])
+            await sub.exec(['rm', '-rf', path], undefined, null)
             deletedPaths.push(path)
           }
         }
