@@ -1,3 +1,5 @@
+import { sdk } from './sdk'
+
 export const NETWORKS = [
   'mainnet',
   'testnet3',
@@ -43,3 +45,10 @@ export const peerInterfaceId = 'peer'
 export const grpcInterfaceId = 'grpc'
 export const rpcPlaintextInterfaceId = 'rpc-plaintext'
 export const rootDir = '/data'
+
+export const mainMounts = sdk.Mounts.of().mountVolume({
+  volumeId: 'main',
+  subpath: null,
+  mountpoint: rootDir,
+  readonly: false,
+})

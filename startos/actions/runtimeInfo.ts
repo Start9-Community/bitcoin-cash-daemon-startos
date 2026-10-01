@@ -1,7 +1,6 @@
 import { sdk } from '../sdk'
 import { storeJson } from '../fileModels/store.json'
-import { Network, NETWORKS, networkPorts, rootDir } from '../utils'
-import { mainMounts } from '../mounts'
+import { Network, NETWORKS, networkPorts, rootDir, mainMounts } from '../utils'
 
 type BchdInfo = {
   version?: number
