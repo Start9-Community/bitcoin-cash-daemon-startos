@@ -7,10 +7,10 @@ import {
   networkPorts,
   rootDir,
   rpcPlaintextPort,
+  mainMounts,
 } from './utils'
 import { bchdConf } from './fileModels/bchd.conf'
 import { storeJson } from './fileModels/store.json'
-import { mainMounts } from './mounts'
 
 export { mainMounts }
 

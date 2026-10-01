@@ -1,6 +1,5 @@
 import { sdk } from '../sdk'
-import { mainMounts } from '../mounts'
-import { rootDir } from '../utils'
+import { rootDir, mainMounts } from '../utils'
 
 export const deletePeers = sdk.Action.withoutInput(
   'delete-peers',
