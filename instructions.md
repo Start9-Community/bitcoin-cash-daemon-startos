@@ -40,15 +40,13 @@ For mining software (ASICSeer, EloPool, ckpool) that has no TLS library, the
 **RPC Plaintext Proxy** at **port 8334** (plain HTTP via stunnel) forwards all
 connections to BCHD's native TLS RPC transparently.
 
-To mint credentials for an external wallet or app:
+BCHD accepts one RPC username and password:
 
-- **Actions → Generate RPC Credential** — create a username/password pair.
-- **Actions → View RPC Credentials** — display existing credentials.
-- **Actions → Delete RPC Credentials** — revoke one or more credentials.
-
-The first credential in the list is the one BCHD itself authenticates with.
-Generating a new one does not make it active, and deleting the first one changes
-which credential the node uses on its next start.
+- **Actions → View RPC Credentials** — display the username, password and port.
+- **Actions → Change RPC Credentials** — replace them with a username you choose
+  and a new random password. BCHD restarts if it is running, and anything still
+  using the old ones loses RPC access. Dependent StartOS services pick up the
+  new ones the next time they start.
 
 ## gRPC / Neutrino
 

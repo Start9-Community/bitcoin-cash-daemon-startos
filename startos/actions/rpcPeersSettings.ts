@@ -1,10 +1,5 @@
 import { sdk } from '../sdk'
-import {
-  ALL_ONLYNETS,
-  bchdConf,
-  fullConfigSpec,
-  OnlynetKey,
-} from '../fileModels/bchd.conf'
+import { bchdConf, fullConfigSpec } from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 
 export const rpcPeersSettings = sdk.Action.withInput(
@@ -22,7 +17,6 @@ export const rpcPeersSettings = sdk.Action.withInput(
 
   fullConfigSpec.filter({
     maxpeers: true,
-    onlynet: true,
     onionOnly: true,
     advertiseClearnetInbound: true,
     torEnabled: true,
@@ -32,19 +26,9 @@ export const rpcPeersSettings = sdk.Action.withInput(
   async ({ effects }: { effects: any }) => {
     const conf = await bchdConf.read().once()
     const store = await storeJson.read().once()
-    const onlynetFromConf =
-      (conf?.onlynet as string[] | undefined)?.filter(Boolean) ?? []
-    const onlynet =
-      onlynetFromConf.length > 0
-        ? (onlynetFromConf as OnlynetKey[])
-        : [...ALL_ONLYNETS]
-    const onionOnly =
-      onlynetFromConf.length > 0 && onlynetFromConf.every((n) => n === 'onion')
-
     return {
       maxpeers: conf?.maxpeers ?? 125,
-      onlynet,
-      onionOnly,
+      onionOnly: store?.onionOnly ?? false,
       advertiseClearnetInbound: store?.advertiseClearnetInbound ?? false,
       torEnabled: store?.torEnabled ?? true,
       torIsolation: store?.torIsolation ?? false,
@@ -52,25 +36,14 @@ export const rpcPeersSettings = sdk.Action.withInput(
   },
 
   async ({ effects, input }: { effects: any; input: any }) => {
-    const onlynetList =
-      (input.onlynet as string[] | undefined)?.filter(Boolean) ?? []
-    const allSelected = ALL_ONLYNETS.every((n) => onlynetList.includes(n))
-    const writeOnlynet = input.onionOnly
-      ? ['onion']
-      : onlynetList.length > 0 && !allSelected
-        ? onlynetList
-        : undefined
-
-    await bchdConf.merge(effects, {
-      maxpeers: input.maxpeers,
-      onlynet: writeOnlynet,
-    })
+    await bchdConf.merge(effects, { maxpeers: input.maxpeers })
     await storeJson.merge(effects, {
+      onionOnly: input.onionOnly,
       advertiseClearnetInbound: input.advertiseClearnetInbound,
       torEnabled: input.torEnabled,
       torIsolation: input.torIsolation,
     })
-    // main.ts reads torEnabled/torIsolation/advertiseClearnetInbound from the
+    // main.ts reads onionOnly/torEnabled/torIsolation/advertiseClearnetInbound from the
     // store with .once() (only bchd.conf is .const-watched), so a Tor toggle that
     // doesn't also change bchd.conf would not restart — leaving the --onion arg
     // and the Tor health check stale. Restart so the change always applies.

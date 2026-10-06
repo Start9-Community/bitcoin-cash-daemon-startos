@@ -25,17 +25,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
   const { rpc: rpcPort, peer: peerPort, grpc: grpcPort } = networkPorts[network]
   const netFlag = networkFlag[network]
   const netLabel = network.charAt(0).toUpperCase() + network.slice(1)
-  const activeCred = store?.rpcCredentials?.[0]
-  const rpcUser = activeCred?.username ?? store?.rpcUser ?? 'bchd'
-  const rpcPassword = activeCred?.password ?? store?.rpcPassword ?? ''
+  const rpcUser = store?.rpcUser ?? 'bchd'
+  const rpcPassword = store?.rpcPassword ?? ''
   const torEnabled = store?.torEnabled ?? true
 
   const grpcEnabled = (conf?.grpclisten ?? '') !== ''
-  const onlynetList = ((conf?.onlynet as string[] | undefined) ?? []).filter(
-    Boolean,
-  )
-  const onlynetActive = onlynetList.length > 0
-  const onionOnly = onlynetActive && onlynetList.every((n) => n === 'onion')
+  const onionOnly = store?.onionOnly ?? false
   const externalip = (store?.externalip ?? []).filter(Boolean)
 
   // Read and clear reindex flags
@@ -99,11 +94,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   if (netFlag) {
     bchdArgs.push(netFlag)
-  }
-
-  // Apply onlynet restrictions only when explicitly narrowed from default-all.
-  for (const net of onlynetList) {
-    bchdArgs.push(`--onlynet=${net}`)
   }
 
   for (const ip of externalip) {
@@ -270,11 +260,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       // never let log-emission break the health check
     }
   }
-
-  const excludedByOnlynet = () => ({
-    result: 'disabled' as const,
-    message: 'Excluded by onlynet',
-  })
 
   return sdk.Daemons.of(effects)
     .addOneshot('nocow', {
@@ -514,8 +499,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
           if (onionOnly && !torEnabled)
             return {
               result: 'failure' as const,
-              message:
-                'Invalid config: onlynet=onion requires Tor routing enabled',
+              message: 'Invalid config: Onion-Only Mode requires Tor Routing',
             }
           if (!torEnabled)
             return {
@@ -532,8 +516,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
               result: 'disabled' as const,
               message: 'Tor is not running',
             }
-          if (onlynetActive && !onlynetList.includes('onion'))
-            return excludedByOnlynet()
           return {
             result: 'success' as const,
             message: externalip.some((ip) => ip.includes('.onion'))
@@ -562,12 +544,12 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: 'Clearnet',
         fn: () => {
-          if (
-            onlynetActive &&
-            !onlynetList.includes('ipv4') &&
-            !onlynetList.includes('ipv6')
-          )
-            return excludedByOnlynet()
+          if (onionOnly)
+            return {
+              result: 'disabled' as const,
+              message:
+                'Onion-Only Mode: clearnet peers are reached through Tor',
+            }
           return {
             result: 'success' as const,
             message: externalip.some((ip) => ip && !ip.includes('.onion'))

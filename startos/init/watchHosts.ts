@@ -1,4 +1,3 @@
-import { bchdConf } from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 import { sdk } from '../sdk'
 import { peerHostId, peerInterfaceId } from '../utils'
@@ -12,15 +11,8 @@ const toHostPort = (h: { hostname: string; port: number | null }): string => {
 
 export const watchHosts = sdk.setupOnInit(async (effects) => {
   const store = await storeJson.read().const(effects)
-  const advertiseClearnetInbound = !!store?.advertiseClearnetInbound
-
-  const conf = await bchdConf.read().const(effects)
-  const onlynetList: string[] = (
-    (conf?.onlynet as string[] | undefined) ?? []
-  ).filter(Boolean)
-  const onlynetActive = onlynetList.length > 0
-  const allowIpv4 = !onlynetActive || onlynetList.includes('ipv4')
-  const allowIpv6 = !onlynetActive || onlynetList.includes('ipv6')
+  const advertiseClearnet =
+    !!store?.advertiseClearnetInbound && !store?.onionOnly
 
   // One subscription on the peer host; the map fn walks the host to the peer
   // interface and returns just the advertised externalip list (onions + the
@@ -47,23 +39,17 @@ export const watchHosts = sdk.setupOnInit(async (effects) => {
           .format('hostname-info')
           .map(toHostPort),
       )
-      if (advertiseClearnetInbound) {
-        if (allowIpv4) {
-          list.push(
-            ...publicInfo
-              .filter({ kind: 'ipv4' })
-              .format('hostname-info')
-              .map(toHostPort),
-          )
-        }
-        if (allowIpv6) {
-          list.push(
-            ...publicInfo
-              .filter({ kind: 'ipv6' })
-              .format('hostname-info')
-              .map(toHostPort),
-          )
-        }
+      if (advertiseClearnet) {
+        list.push(
+          ...publicInfo
+            .filter({ kind: 'ipv4' })
+            .format('hostname-info')
+            .map(toHostPort),
+          ...publicInfo
+            .filter({ kind: 'ipv6' })
+            .format('hostname-info')
+            .map(toHostPort),
+        )
       }
       return list
     })

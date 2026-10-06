@@ -85,7 +85,7 @@ Two models, and the division between them is not arbitrary: `bchd.conf` holds wh
 
 INI values come back as **strings**, which the model normalizes: `"0"`/`"1"`/`"true"` all coerce to a numeric `0`/`1`. Without that, a flag set to `0` would fail a numeric comparison and silently fall through to its default — meaning a setting could not be turned off at all.
 
-**`store.json`** carries what has no place in BCHD's own config: the selected network, the named RPC credential list, the Tor preferences, the prune depth, the advertised external addresses, and several one-shot flags (`reindexChainstate`, `fastSyncUsed`, the per-index catch-up markers). `main` clears the reindex flag as it consumes it, so a reindex happens once rather than on every start.
+**`store.json`** carries what has no place in BCHD's own config: the selected network, the RPC username and password, the Tor preferences, the prune depth, the advertised external addresses, and several one-shot flags (`reindexChainstate`, `fastSyncUsed`, the per-index catch-up markers). `main` clears the reindex flag as it consumes it, so a reindex happens once rather than on every start.
 
 `rpc.cert` and `rpc.key` are generated, not modelled. They are created on first start only if absent, so they persist across restarts and travel in the backup — a client that pinned the certificate keeps working.
 
@@ -133,7 +133,7 @@ The gRPC interface is exported only when gRPC is enabled, so its absence from th
 
 ## Installation and First-Run Flow
 
-Install seeds `bchd.conf`, generates a random RPC credential named **Default**, and turns Tor routing on. There is no task and no wizard; the node starts syncing mainnet immediately.
+Install seeds `bchd.conf`, generates a random RPC password for the username `bchd`, and turns Tor routing on. There is no task and no wizard; the node starts syncing mainnet immediately.
 
 Start-up runs a oneshot first: it creates the data directory, applies the NoCOW attribute, generates the TLS certificate if it is missing, and strips any legacy external-IP lines. The node then starts, followed by the plaintext proxy.
 
@@ -147,7 +147,7 @@ Thirteen actions in four groups, plus one hidden. The ones that matter most are 
 
 ### Node Info — ungrouped
 
-Reports version, network, peer count, and sync progress from the running node. Read-only, `only-running`, immediate.
+Reports version, network, peer count, and sync progress from the running node, each as its own labelled field. Read-only, `only-running`, immediate.
 
 ### Chain Network — Configuration
 
@@ -173,24 +173,23 @@ Three constraints are enforced here rather than left to fail at run time, becaus
 
 ### RPC & Peers Settings — Configuration
 
-Peer limits, allowed networks, onion-only mode, Tor routing, Tor stream isolation, and whether to advertise clearnet inbound addresses.
+Peer limits, Onion-Only Mode, Tor routing, Tor stream isolation, and whether to advertise clearnet inbound addresses.
 
-- **What it changes:** `maxpeers` and `onlynet` in `bchd.conf`; the Tor and advertise flags in the store.
+- **What it changes:** `maxpeers` in `bchd.conf`; the Onion-Only, Tor and advertise flags in the store.
 - **Cost:** **restarts unconditionally**, even if nothing changed. The Tor flags live in the store, which `main` reads without watching, so a restart is the only thing that makes a Tor toggle take effect instead of leaving the running node's flags stale.
 - **Repeat safety:** idempotent.
-- **Worth knowing:** stream isolation gives a fresh circuit per peer, and causes aggressive peer churn during initial sync. It is off by default for that reason. Advertising clearnet inbound is also off by default, and respects the allowed-networks setting — an excluded network is never advertised.
+- **Worth knowing:** stream isolation gives a fresh circuit per peer, and causes aggressive peer churn during initial sync. It is off by default for that reason. Advertising clearnet inbound is also off by default, and never happens in Onion-Only Mode.
+- **Onion-Only Mode passes `--proxy` as well as `--onion`**, both Tor's SOCKS address: every outbound connection, clearnet peers and DNS seeding included, goes through Tor. BCHD has no `onlynet` option, so it cannot restrict peers to .onion addresses. It keeps `--listen`, because inbound onion connections arrive on the peer port.
 
 ### Mempool & Block Policy — Configuration
 
-Excessive block size and minimum relay fee. Writes `bchd.conf` only, and does not restart; the values apply on the next start.
+Excessive block size (at least BCHD's own floor and default, 32000000) and minimum relay fee. Writes `bchd.conf` only, and does not restart; the values apply on the next start.
 
-### Credentials — three actions
+### Credentials — two actions
 
-**View RPC Credentials** shows a stored credential's username, password, and port. **Generate RPC Credential** creates a new named one with a random password. **Delete RPC Credentials** removes one or more by name.
+**BCHD accepts exactly one RPC username and password** (`--rpcuser`/`--rpcpass`), so the package stores one pair. It is what the node authenticates with, what the health checks use, and what dependent packages read from `store.json` when they start.
 
-- **The first credential in the list is the active one** — it is what the node actually authenticates with and what the health checks use. Generating a credential does not make it active, and deleting the first one changes which credential the node uses on its next start.
-- All three are available at any status and write only the store.
-- Deletion is permanent and has no undo.
+**View RPC Credentials** shows the username, password (masked), and the RPC port of the network in use, each as its own copyable field. **Change RPC Credentials** replaces the pair with a username the user enters (letters and digits) and a new random password, shows both, and restarts BCHD if it is running. It warns before replacing an existing pair; the old password cannot be recovered.
 
 ### Maintenance — four actions
 
@@ -208,7 +207,7 @@ Excessive block size and minimum relay fee. Writes `bchd.conf` only, and does no
 
 ### Auto-Configure — hidden
 
-**Not user-facing.** It exists so a dependent package — Fulcrum, an explorer, a mining pool — can raise a task that sets exactly the BCHD settings it needs, with those fields pre-filled and locked. A support agent should never tell a user to go find it; they will encounter it as a task on this service's page, raised by another.
+**Not user-facing.** It exists so a dependent package — Fulcrum, an explorer, a mining pool — can raise a task that sets exactly the BCHD settings it needs, with those fields pre-filled and locked. It writes only the fields the task sets and leaves every other setting as the user had it. It still applies the index interlocks: Transaction Index stays off while pruning, and while Fast Sync is on or has been used, in which case it says so instead of starting a node BCHD would refuse. A support agent should never tell a user to go find it; they will encounter it as a task on this service's page, raised by another.
 
 ## Tasks
 
@@ -226,7 +225,7 @@ Eight checks. Three probe the node, and five report on state that would otherwis
 | `grpc`             | "gRPC"                | The gRPC port is in LISTEN state               |
 | `rpc-plaintext`    | "RPC Plaintext Proxy" | The proxy port is in LISTEN state              |
 | `tor`              | "Tor"                 | Configuration plus Tor's live package status   |
-| `clearnet`         | "Clearnet"            | Allowed networks plus advertised addresses     |
+| `clearnet`         | "Clearnet"            | Onion-Only Mode plus advertised addresses      |
 | `i2p`              | "I2P"                 | Always disabled — not implemented              |
 
 **"Blockchain Sync" compares against `syncheight`, not `initialblockdownload`.** BCHD does not publish the latter, and reading it returned undefined — which made the node report Synced at any height. It also cannot use `headers`, because BCHD advances that in lockstep with `blocks`. A node with no peers reports `syncheight` 0, which is treated as "no information" rather than as being caught up; regtest is permanently in that state.
@@ -235,9 +234,9 @@ Eight checks. Three probe the node, and five report on state that would otherwis
 
 **"Peer Connections" reports `loading`, not failure, below three peers.** A node that has just started legitimately has none.
 
-**"Tor" reports the specific reason it is not active** — disabled in config, not installed, not running, or excluded by the allowed-networks setting — and distinguishes outbound-only from inbound-and-outbound by whether an onion address is being advertised. It also flags one invalid combination outright: onion-only peer connections with Tor routing switched off.
+**"Tor" reports the specific reason it is not active** — disabled in config, not installed, or not running — and distinguishes outbound-only from inbound-and-outbound by whether an onion address is being advertised. It also flags one invalid combination outright: Onion-Only Mode with Tor routing switched off.
 
-"Clearnet" makes the same outbound-only distinction, based on whether a public address is advertised.
+"Clearnet" makes the same outbound-only distinction, based on whether a public address is advertised, and reports disabled in Onion-Only Mode.
 
 **Index rebuild progress appears in the logs, not in a check.** BCHD logs one aggregate line covering all indexes, so the package re-emits it labelled per index while a rebuild is pending. It comes from the RPC readiness poll rather than from the sync check, because an index rebuild happens _before_ the RPC server starts — which is exactly when the sync check cannot run.
 
@@ -255,7 +254,7 @@ So the backup is the **configuration**, not the chain: `bchd.conf`, `store.json`
 
 **A restored node re-syncs from scratch.** That is the deliberate trade — a backup measured in kilobytes instead of hundreds of gigabytes, at the cost of a full initial sync after a restore. Anything depending on this node's RPC will be unusable until that sync completes.
 
-The TLS certificate surviving is what stops a restore from breaking clients that pinned it, and the credential list surviving is what stops dependent packages from needing reconfiguration.
+The TLS certificate surviving is what stops a restore from breaking clients that pinned it, and the RPC credentials surviving is what stops dependent packages from needing reconfiguration.
 
 ## Limitations and Differences
 
@@ -304,7 +303,6 @@ actions:
   - mempool-settings
   - view-rpc-credentials
   - generate-rpc-credential
-  - delete-rpc-credentials
   - reindex-chainstate
   - delete-peers
   - delete-test-network-data

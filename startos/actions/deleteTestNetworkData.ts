@@ -8,7 +8,7 @@ const deleteSpec = InputSpec.of({
   networks: Value.multiselect({
     name: 'Networks To Delete',
     description:
-      'Delete all BCHD data for selected test networks. Mainnet is intentionally excluded and cannot be selected.',
+      'Each selected network loses its chain data, indexes, peers and logs. The network BCHD is currently running cannot be deleted.\n- Testnet3: the BCH test network\n- Testnet4: version 4 of the BCH test network\n- Chipnet: the network for testing upcoming upgrades\n- Regtest: the local, private test network',
     warning: null,
     default: [],
     values: {
@@ -32,7 +32,7 @@ export const deleteTestNetworkData = sdk.Action.withInput(
   async () => ({
     name: 'Delete Test Network Data',
     description:
-      'Delete all BCHD data for testnet3, chipnet and/or regtest. Mainnet data is never deleted by this action.',
+      'Delete all BCHD data for testnet3, testnet4, chipnet and/or regtest. Mainnet data is never deleted by this action.',
     warning:
       'This permanently deletes selected test-network data, indexes, peers, and logs from disk.',
     allowedStatuses: 'any',
@@ -95,7 +95,7 @@ export const deleteTestNetworkData = sdk.Action.withInput(
       async (sub) => {
         for (const net of selected) {
           for (const path of pathsFor(net)) {
-            await sub.exec(['rm', '-rf', path], undefined, null)
+            await sub.exec(['rm', '-rf', path], { timeout: null })
             deletedPaths.push(path)
           }
         }

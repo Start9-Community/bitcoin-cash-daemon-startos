@@ -1,10 +1,10 @@
+import { z } from '@start9labs/start-sdk'
 import {
-  ALL_ONLYNETS,
   bchdConf,
   fullConfigSpec,
-  OnlynetKey,
+  shape as confShape,
 } from '../../fileModels/bchd.conf'
-import { storeJson } from '../../fileModels/store.json'
+import { shape as storeShape, storeJson } from '../../fileModels/store.json'
 import { sdk } from '../../sdk'
 
 export const autoconfig = sdk.Action.withInput(
@@ -34,10 +34,6 @@ export const autoconfig = sdk.Action.withInput(
   async ({ effects }) => {
     const conf = await bchdConf.read().once()
     const store = await storeJson.read().once()
-    const onlynetFromConf =
-      (conf?.onlynet as string[] | undefined)?.filter(Boolean) ?? []
-    const onionOnly =
-      onlynetFromConf.length > 0 && onlynetFromConf.every((n) => n === 'onion')
     return {
       txindex: conf?.txindex === 1,
       addrindex: conf?.txindex === 1 ? conf?.addrindex === 1 : false,
@@ -48,11 +44,7 @@ export const autoconfig = sdk.Action.withInput(
       utxocachemaxsize: conf?.utxocachemaxsize ?? 1024,
       dbflushinterval: conf?.dbflushinterval ?? 1800,
       maxpeers: conf?.maxpeers ?? 125,
-      onlynet:
-        onlynetFromConf.length > 0
-          ? (onlynetFromConf as OnlynetKey[])
-          : [...ALL_ONLYNETS],
-      onionOnly,
+      onionOnly: store?.onionOnly ?? false,
       peerbloomfilters: conf?.nopeerbloomfilters !== 1,
       torEnabled: store?.torEnabled ?? true,
       torIsolation: store?.torIsolation ?? false,
@@ -62,74 +54,95 @@ export const autoconfig = sdk.Action.withInput(
   },
 
   async ({ effects, input }) => {
-    const {
-      torEnabled,
-      torIsolation,
-      prune,
-      txindex,
-      addrindex,
-      grpcEnabled,
-      cfindex,
-      onlynet,
-      onionOnly,
-      peerbloomfilters,
-      dbcachesize,
-      utxocachemaxsize,
-      dbflushinterval,
-      maxpeers,
-      excessiveblocksize,
-      minrelaytxfee,
-    } = input as any
-    const prevConf = await bchdConf.read().once()
-    const prevStore = await storeJson.read().once()
-    const onlynetList = (onlynet as string[] | undefined)?.filter(Boolean) ?? []
-    const allSelected = ['ipv4', 'ipv6', 'onion'].every((n) =>
-      onlynetList.includes(n),
-    )
-    const writeOnlynet = onionOnly
-      ? ['onion']
-      : onlynetList.length > 0 && !allSelected
-        ? onlynetList
-        : undefined
-    // Prune/txindex interlock
-    const effectiveTxindex = prune && prune > 0 ? false : (txindex ?? true)
-    // addrindex requires txindex; default off.
-    const effectiveAddrindex = effectiveTxindex ? !!addrindex : false
-    const confPatch: Record<string, unknown> = {
-      txindex: effectiveTxindex ? 1 : 0,
-      addrindex: effectiveAddrindex ? 1 : 0,
-      grpclisten: grpcEnabled ? '0.0.0.0:8335' : '',
-      nocfilters: cfindex === false ? 1 : 0,
-      onlynet: writeOnlynet,
-      nopeerbloomfilters: peerbloomfilters === false ? 1 : 0,
-      dbcachesize: dbcachesize ?? 450,
-      utxocachemaxsize: utxocachemaxsize ?? 1024,
-      dbflushinterval: dbflushinterval ?? 1800,
-      maxpeers: maxpeers ?? 125,
+    // A task's form holds only the fields it sets; leave every other setting as it is.
+    const conf = await bchdConf.read().once()
+    const store = await storeJson.read().once()
+    const confPatch: Partial<z.infer<typeof confShape>> = {}
+    const storePatch: Partial<z.infer<typeof storeShape>> = {}
+
+    const pruneDepth =
+      input.prune === undefined
+        ? (store?.pruneDepth ?? 0)
+        : input.prune && input.prune > 0
+          ? Math.max(input.prune, 288)
+          : 0
+    if (input.prune !== undefined) storePatch.pruneDepth = pruneDepth
+
+    // BCHD refuses to start with txindex/addrindex alongside --prune or --fastsync.
+    const fastsync = input.fastsync ?? conf?.fastsync === 1
+    const fastSyncBlocked = fastsync || (store?.fastSyncUsed ?? false)
+    const txindex =
+      !fastSyncBlocked &&
+      pruneDepth === 0 &&
+      (input.txindex ?? conf?.txindex === 1)
+    const addrindex = txindex && (input.addrindex ?? conf?.addrindex === 1)
+    if (
+      input.txindex !== undefined ||
+      input.addrindex !== undefined ||
+      input.prune !== undefined ||
+      input.fastsync !== undefined
+    ) {
+      if (input.fastsync !== undefined) confPatch.fastsync = fastsync ? 1 : 0
+      confPatch.txindex = txindex ? 1 : 0
+      confPatch.addrindex = addrindex ? 1 : 0
+      storePatch.txindexCatchupPending =
+        txindex &&
+        (conf?.txindex !== 1 || (store?.txindexCatchupPending ?? false))
+      storePatch.addrindexCatchupPending =
+        addrindex &&
+        (conf?.addrindex !== 1 || (store?.addrindexCatchupPending ?? false))
     }
-    if (excessiveblocksize != null)
-      confPatch.excessiveblocksize = excessiveblocksize
-    if (minrelaytxfee != null) confPatch.minrelaytxfee = minrelaytxfee
-    // Per-index catch-up tracking (Part C): mark off→on transitions.
-    const prevTxindexOn = prevConf?.txindex === 1
-    const prevAddrindexOn = prevConf?.addrindex === 1
-    const txindexCatchupPending = !effectiveTxindex
-      ? false
-      : !prevTxindexOn
-        ? true
-        : (prevStore?.txindexCatchupPending ?? false)
-    const addrindexCatchupPending = !effectiveAddrindex
-      ? false
-      : !prevAddrindexOn
-        ? true
-        : (prevStore?.addrindexCatchupPending ?? false)
-    await bchdConf.merge(effects, confPatch as any)
-    await storeJson.merge(effects, {
-      torEnabled: torEnabled ?? true,
-      torIsolation: torIsolation ?? false,
-      pruneDepth: prune && prune > 0 ? Math.max(prune, 288) : 0,
-      txindexCatchupPending,
-      addrindexCatchupPending,
-    })
+
+    if (input.grpcEnabled !== undefined)
+      confPatch.grpclisten = input.grpcEnabled ? '0.0.0.0:8335' : ''
+    if (input.cfindex !== undefined)
+      confPatch.nocfilters = input.cfindex ? 0 : 1
+    if (input.peerbloomfilters !== undefined)
+      confPatch.nopeerbloomfilters = input.peerbloomfilters ? 0 : 1
+    if (input.dbcachesize !== undefined)
+      confPatch.dbcachesize = input.dbcachesize
+    if (input.utxocachemaxsize !== undefined)
+      confPatch.utxocachemaxsize = input.utxocachemaxsize
+    if (input.dbflushinterval !== undefined)
+      confPatch.dbflushinterval = input.dbflushinterval
+    if (input.maxpeers !== undefined) confPatch.maxpeers = input.maxpeers
+    if (input.excessiveblocksize != null)
+      confPatch.excessiveblocksize = input.excessiveblocksize
+    if (input.minrelaytxfee != null)
+      confPatch.minrelaytxfee = input.minrelaytxfee
+
+    if (input.onionOnly !== undefined) storePatch.onionOnly = input.onionOnly
+    if (input.torEnabled !== undefined) storePatch.torEnabled = input.torEnabled
+    if (input.torIsolation !== undefined)
+      storePatch.torIsolation = input.torIsolation
+    if (input.advertiseClearnetInbound !== undefined)
+      storePatch.advertiseClearnetInbound = input.advertiseClearnetInbound
+
+    await bchdConf.merge(effects, confPatch)
+    await storeJson.merge(effects, storePatch)
+
+    // main reads store.json once at start, so a change there needs a restart to apply.
+    if (
+      (
+        [
+          'pruneDepth',
+          'onionOnly',
+          'torEnabled',
+          'torIsolation',
+          'advertiseClearnetInbound',
+        ] as const
+      ).some((k) => k in storePatch && storePatch[k] !== store?.[k])
+    )
+      await effects.restart()
+
+    if (input.txindex && !txindex && fastSyncBlocked)
+      return {
+        version: '1' as const,
+        title: 'Transaction Index Unavailable',
+        message:
+          'Transaction Index cannot be turned on while Fast Sync is on, or on a data directory Fast Sync has been used on. Turn Fast Sync off in Node Settings; if it has already been used, also run Maintenance → Delete Mainnet Data and re-sync from genesis.',
+        result: null,
+      }
+    return null
   },
 )

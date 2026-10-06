@@ -1,18 +1,9 @@
 import { FileHelper, z } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 
-export const rpcCredentialShape = z.object({
-  name: z.string(),
-  username: z.string(),
-  password: z.string(),
-})
-
-export type RpcCredential = z.infer<typeof rpcCredentialShape>
-
-export const shape = z.object({
+export const shape = z.looseObject({
   rpcUser: z.string().catch('bchd'),
   rpcPassword: z.string().catch(''),
-  rpcCredentials: z.array(rpcCredentialShape).catch([]),
   network: z
     .enum(['mainnet', 'testnet3', 'testnet4', 'chipnet', 'regtest'])
     .catch('mainnet'),
@@ -22,6 +13,7 @@ export const shape = z.object({
   reindexChainstate: z.boolean().catch(false),
   torEnabled: z.boolean().catch(true),
   torIsolation: z.boolean().catch(false),
+  onionOnly: z.boolean().catch(false),
   pruneDepth: z.number().catch(0),
   advertiseClearnetInbound: z.boolean().catch(false),
   externalip: z.array(z.string()).catch([]),
