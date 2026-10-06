@@ -1,4 +1,4 @@
-import { VersionInfo, z } from '@start9labs/start-sdk'
+import { IMPOSSIBLE, VersionInfo, z } from '@start9labs/start-sdk'
 import { bchdConf } from '../fileModels/bchd.conf'
 import { storeJson } from '../fileModels/store.json'
 
@@ -94,6 +94,6 @@ export const current = VersionInfo.of({
         }
       })
     },
-    down: async ({ effects }) => {},
+    down: IMPOSSIBLE,
   },
 })

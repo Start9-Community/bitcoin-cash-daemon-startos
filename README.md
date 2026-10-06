@@ -143,7 +143,7 @@ Once the sync completes, the package records it and turns Fast Sync off if it wa
 
 ## Actions
 
-Thirteen actions in four groups, plus one hidden. The ones that matter most are in **Node Settings**, because two of its toggles have permanent consequences.
+Eleven visible actions, plus one hidden. The ones that matter most are in **Node Settings**, because two of its toggles have permanent consequences.
 
 ### Node Info — ungrouped
 
@@ -162,7 +162,7 @@ Switches which BCH network the node runs: mainnet, testnet3, testnet4, chipnet, 
 Indexes, pruning, Fast Sync, gRPC, filters, and cache sizes.
 
 - **What it changes:** most of `bchd.conf`, plus `pruneDepth` and the index catch-up markers in the store.
-- **Cost:** applies on the next start. Turning an index **on** makes the next start rebuild it from genesis before the RPC server comes up, which can take a long time and is not interruptible.
+- **Cost:** changing Prune Depth restarts BCHD immediately; other settings apply on the next start. Turning an index **on** makes the next start rebuild it from genesis before the RPC server comes up, which can take a long time and is not interruptible.
 - **Repeat safety:** idempotent — except that Fast Sync is not, see below.
 
 Three constraints are enforced here rather than left to fail at run time, because BCHD hard-exits on the conflicting combinations:
@@ -178,7 +178,8 @@ Peer limits, Onion-Only Mode, Tor routing, Tor stream isolation, and whether to 
 - **What it changes:** `maxpeers` in `bchd.conf`; the Onion-Only, Tor and advertise flags in the store.
 - **Cost:** **restarts unconditionally**, even if nothing changed. The Tor flags live in the store, which `main` reads without watching, so a restart is the only thing that makes a Tor toggle take effect instead of leaving the running node's flags stale.
 - **Repeat safety:** idempotent.
-- **Worth knowing:** stream isolation gives a fresh circuit per peer, and causes aggressive peer churn during initial sync. It is off by default for that reason. Advertising clearnet inbound is also off by default, and never happens in Onion-Only Mode.
+- **Worth knowing:** stream isolation gives a fresh circuit per peer, and causes aggressive peer churn during initial sync. It is enabled on fresh installations; turn it off here if peer churn slows your sync. Advertising clearnet inbound is also off by default, and never happens in Onion-Only Mode.
+- **Onion-Only Mode requires Tor Routing.** BCHD refuses to start with Onion-Only Mode on and Tor Routing off, rather than making direct clearnet connections.
 - **Onion-Only Mode passes `--proxy` as well as `--onion`**, both Tor's SOCKS address: every outbound connection, clearnet peers and DNS seeding included, goes through Tor. BCHD has no `onlynet` option, so it cannot restrict peers to .onion addresses. It keeps `--listen`, because inbound onion connections arrive on the peer port.
 
 ### Mempool & Block Policy — Configuration
@@ -257,6 +258,8 @@ So the backup is the **configuration**, not the chain: `bchd.conf`, `store.json`
 The TLS certificate surviving is what stops a restore from breaking clients that pinned it, and the RPC credentials surviving is what stops dependent packages from needing reconfiguration.
 
 ## Limitations and Differences
+
+Downgrading from `0.22.2:3` to an earlier package is blocked: earlier packages cannot preserve Onion-Only Mode after this release's configuration migration. Restore a backup made with the earlier package instead.
 
 1. **No Double Spend Proof.** BCHD does not implement DSP relay. Mining operations that need it want Bitcoin Cash Node or Flowee instead.
 2. **Fast Sync is a one-way door.** Using it permanently prevents the Transaction Index on that data directory; recovering means deleting all mainnet data and re-syncing.

@@ -31,6 +31,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   const grpcEnabled = (conf?.grpclisten ?? '') !== ''
   const onionOnly = store?.onionOnly ?? false
+  if (onionOnly && !torEnabled)
+    throw new Error(
+      'Onion-Only Mode requires Tor Routing. Enable Tor Routing in RPC & Peers Settings before starting BCHD.',
+    )
   const externalip = (store?.externalip ?? []).filter(Boolean)
 
   // Read and clear reindex flags

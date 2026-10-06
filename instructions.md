@@ -17,7 +17,7 @@ configuring first. This page covers what is specific to running it on StartOS.
 - A **gRPC API** (port 8335) with pub/sub notifications — used by Neutrino light clients for compact block filter synchronisation (BIP 157/158).
 - **BIP 37 bloom filters** for SPV wallets.
 - Full **transaction index** (`txindex`) and **address index** (`addrindex`) — required by wallets and indexers that look up arbitrary txids or addresses.
-- **Tor** support — routing is on by default and needs the Tor service installed and running. Turn it off, or enable stream isolation, from **RPC & Peers Settings**.
+- **Tor** support — routing is on by default and needs the Tor service installed and running. Stream isolation is also on by default. Change either setting from **RPC & Peers Settings**.
 - Multiple network support: **mainnet**, **testnet3**, **testnet4**, **chipnet**, and **regtest**.
 
 ## Getting started
@@ -61,8 +61,10 @@ All settings are actions on the service page.
 
 - **Chain Network** — mainnet (default), testnet3, testnet4, chipnet, or regtest. Every port changes with it, and each network keeps its own data.
 - **Node Settings** — transaction and address indexes, Fast Sync, pruning, the gRPC toggle, bloom filters, compact block filters, and cache sizes.
-- **RPC & Peers Settings** — maximum peers, which networks to connect over, Tor routing and stream isolation, and whether to advertise a clearnet address for inbound peers.
+- **RPC & Peers Settings** — maximum peers, Onion-Only Mode, Tor routing and stream isolation, and whether to advertise a clearnet address for inbound peers. Onion-Only Mode requires Tor Routing; BCHD will not start if you leave Onion-Only Mode on and turn Tor Routing off.
 - **Mempool & Block Policy** — excessive block size and the minimum relay fee.
+
+Changing Prune Depth under **Node Settings** restarts BCHD immediately.
 
 Two settings under **Node Settings** are worth reading before you change them:
 
@@ -92,6 +94,7 @@ selected network.
 
 ## Limitations
 
+- Downgrading from package `0.22.2:3` to an earlier package is blocked to preserve Onion-Only Mode. To return to an earlier package, restore a backup made with it.
 - Blockchain data is not backed up. Backups cover configuration and credentials only.
   Block and chainstate data re-sync after a restore.
 - Shutdown can take up to 5 minutes while the database flushes; let it finish rather
