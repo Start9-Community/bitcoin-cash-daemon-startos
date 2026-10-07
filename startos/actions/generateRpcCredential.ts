@@ -1,25 +1,23 @@
+import { utils } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { storeJson } from '../fileModels/store.json'
 
 const { InputSpec, Value } = sdk
 
 const spec = InputSpec.of({
-  name: Value.text({
-    name: 'Credential Name',
-    description:
-      'A friendly label for this credential (e.g. "Fulcrum", "Explorer", "Wallet").',
-    required: true,
-    default: null,
-    masked: false,
-    placeholder: 'My Service',
-  }),
   username: Value.text({
     name: 'Username',
-    description: 'Alphanumeric username for RPC authentication.',
+    description: null,
     required: true,
     default: null,
     masked: false,
-    placeholder: 'myservice',
+    placeholder: 'bchd',
+    patterns: [
+      {
+        regex: '^[A-Za-z0-9]+$',
+        description: 'Letters and digits only',
+      },
+    ],
   }),
 })
 
@@ -27,10 +25,12 @@ export const generateRpcCredential = sdk.Action.withInput(
   'generate-rpc-credential',
 
   async ({ effects }) => ({
-    name: 'Generate RPC Credential',
+    name: 'Change RPC Credentials',
     description:
-      'Create a new named RPC credential. The generated password is stored and can be viewed later in "View RPC Credentials".',
-    warning: null,
+      'Replace the RPC username and password with the username you enter and a new random password. BCHD accepts one set of RPC credentials.',
+    warning: (await storeJson.read((s) => s.rpcPassword).once())
+      ? 'Replaces the current RPC username and password, and restarts BCHD if it is running. Anything still using the old ones loses RPC access.'
+      : null,
     allowedStatuses: 'any',
     group: 'Credentials',
     visibility: 'enabled',
@@ -39,55 +39,47 @@ export const generateRpcCredential = sdk.Action.withInput(
   spec,
 
   async ({ effects }) => ({
-    name: undefined as string | undefined,
-    username: undefined as string | undefined,
+    username: (await storeJson.read((s) => s.rpcUser).once()) ?? undefined,
   }),
 
   async ({ effects, input }) => {
-    const { name, username } = input
-
-    // Generate a random 32-character password
-    const chars =
-      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    let password = ''
-    const bytes = new Uint8Array(32)
-    globalThis.crypto.getRandomValues(bytes)
-    for (const b of bytes) {
-      password += chars[b % chars.length]
-    }
-
-    // Read existing credentials and append
-    const store = await storeJson.read().once()
-    const creds = [...(store?.rpcCredentials ?? [])]
-
-    // Remove any existing entry with the same name (replace)
-    const filtered = creds.filter((c) => c.name !== name)
-    filtered.push({ name, username, password })
-
-    // Also update legacy rpcUser/rpcPassword to match the first credential
-    const active = filtered[0]!
-    await storeJson.merge(effects, {
-      rpcCredentials: filtered,
-      rpcUser: active.username,
-      rpcPassword: active.password,
+    const password = utils.getDefaultString({
+      charset: 'a-z,A-Z,0-9',
+      len: 32,
     })
+    await storeJson.merge(effects, {
+      rpcUser: input.username,
+      rpcPassword: password,
+    })
+    // main reads the credentials once at start.
+    await effects.restart()
 
     return {
       version: '1' as const,
-      title: `RPC Credential: ${name}`,
-      message: [
-        'Credential saved. You can view it anytime in **View RPC Credentials**.',
-        '',
-        `**Name:** ${name}`,
-        `**Username:** ${username}`,
-        `**Password:** ${password}`,
-      ].join('\n'),
+      title: 'RPC Credentials Changed',
+      message: 'You can view them anytime in **View RPC Credentials**.',
       result: {
-        type: 'single' as const,
-        value: password,
-        copyable: true,
-        qr: false,
-        masked: false,
+        type: 'group' as const,
+        value: [
+          {
+            type: 'single' as const,
+            name: 'Username',
+            description: null,
+            value: input.username,
+            copyable: true,
+            qr: false,
+            masked: false,
+          },
+          {
+            type: 'single' as const,
+            name: 'Password',
+            description: null,
+            value: password,
+            copyable: true,
+            qr: false,
+            masked: true,
+          },
+        ],
       },
     }
   },

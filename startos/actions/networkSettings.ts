@@ -8,9 +8,9 @@ const networkSpec = InputSpec.of({
   network: Value.select({
     name: 'Chain Network',
     description:
-      'Bitcoin Cash network to run. Changing this restarts BCHD and syncs the selected network from its own separate data directory.',
+      'Each network keeps its own data directory, so switching back finds its chain where it was left.\n- Mainnet: the real Bitcoin Cash network\n- Testnet3: the BCH test network\n- Testnet4: version 4 of the BCH test network\n- Chipnet: the network for testing upcoming upgrades\n- Regtest: a local, private test network with no peers',
     warning:
-      'Mainnet data is preserved. Chipnet/regtest use separate data directories and can be cleaned via Maintenance actions.',
+      'Mainnet data is preserved. Test network data stays on disk until you remove it with Delete Test Network Data.',
     values: {
       mainnet: 'Mainnet',
       testnet3: 'Testnet3 (BCH test network)',

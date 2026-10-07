@@ -1,3 +1,4 @@
+import { T } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { storeJson } from '../fileModels/store.json'
 import { Network, NETWORKS, networkPorts, rootDir, mainMounts } from '../utils'
@@ -41,9 +42,8 @@ export const runtimeInfo = sdk.Action.withoutInput(
       ? (store!.network as Network)
       : 'mainnet'
     const { rpc: rpcPort } = networkPorts[network]
-    const activeCred = store?.rpcCredentials?.[0]
-    const rpcUser = activeCred?.username ?? store?.rpcUser ?? 'bchd'
-    const rpcPassword = activeCred?.password ?? store?.rpcPassword ?? ''
+    const rpcUser = store?.rpcUser ?? 'bchd'
+    const rpcPassword = store?.rpcPassword ?? ''
 
     return sdk.SubContainer.withTemp(
       effects,
@@ -84,24 +84,60 @@ export const runtimeInfo = sdk.Action.withoutInput(
             ? JSON.parse(peersRes.stdout.toString())
             : null
 
-        const lines: string[] = []
+        const single = (
+          name: string,
+          description: string | null,
+          value: string,
+        ): T.ActionResultMember => ({
+          type: 'single',
+          name,
+          description,
+          value,
+          copyable: false,
+          qr: false,
+          masked: false,
+        })
+
+        const value: T.ActionResultMember[] = []
         if (info) {
-          lines.push(`Version: ${info.version ?? 'unknown'}`)
-          lines.push(`Protocol: ${info.protocolversion ?? 'unknown'}`)
+          value.push(single('Version', null, String(info.version ?? 'unknown')))
+          value.push(
+            single('Protocol', null, String(info.protocolversion ?? 'unknown')),
+          )
           if (info.relayfee != null)
-            lines.push(`Relay Fee: ${info.relayfee} BCH/kB`)
+            value.push(
+              single(
+                'Relay Fee',
+                'The lowest fee rate this node relays transactions at',
+                `${info.relayfee} BCH/kB`,
+              ),
+            )
         }
         if (peers) {
           const inbound = peers.filter((p) => p.inbound).length
-          lines.push(
-            `Connections: ${peers.length} (in: ${inbound}, out: ${peers.length - inbound})`,
+          value.push(
+            single(
+              'Connections',
+              'Peers connected, inbound and outbound',
+              `${peers.length} (in: ${inbound}, out: ${peers.length - inbound})`,
+            ),
           )
         } else if (info?.connections != null) {
-          lines.push(`Connections: ${info.connections}`)
+          value.push(
+            single(
+              'Connections',
+              'Peers connected, inbound and outbound',
+              String(info.connections),
+            ),
+          )
         }
         if (chain) {
-          lines.push(
-            `Chain: ${chain.pruned ? 'pruned' : 'archival'} ${network}`,
+          value.push(
+            single(
+              'Chain',
+              null,
+              `${chain.pruned ? 'pruned' : 'archival'} ${network}`,
+            ),
           )
           // `syncheight` is the best height BCHD's peers have offered. Not
           // `headers`, which it advances in step with `blocks`, and not
@@ -109,23 +145,29 @@ export const runtimeInfo = sdk.Action.withoutInput(
           const blocks = chain.blocks ?? 0
           const target = chain.syncheight ?? 0
           const vp = chain.verificationprogress ?? 0
-          lines.push(`Blocks: ${blocks} / ${target || (chain.headers ?? '?')}`)
-          lines.push(
-            `Sync: ${target > blocks ? `${(vp * 100).toFixed(2)}%` : 'Complete'}`,
+          value.push(
+            single(
+              'Blocks',
+              'Blocks verified, out of the best height peers have offered',
+              `${blocks} / ${target || (chain.headers ?? '?')}`,
+            ),
+          )
+          value.push(
+            single(
+              'Sync',
+              null,
+              target > blocks ? `${(vp * 100).toFixed(2)}%` : 'Complete',
+            ),
           )
         }
 
         return {
           version: '1' as const,
           title: 'Node Runtime Info',
-          message: null,
-          result: {
-            type: 'single' as const,
-            value: lines.join('\n'),
-            copyable: false,
-            qr: false,
-            masked: false,
-          },
+          message: value.length
+            ? null
+            : 'BCHD did not answer over RPC. Try again once its RPC health check passes.',
+          result: { type: 'group' as const, value },
         }
       },
     )

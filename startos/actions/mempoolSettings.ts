@@ -7,7 +7,7 @@ export const mempoolSettings = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Mempool & Block Policy',
     description:
-      'Configure excessive block size and minimum relay fee. The mempool acts as an in-memory area for unconfirmed transactions; BCHD batches writes to its bolt database for efficient processing.',
+      'Configure the largest block BCHD accepts and the minimum fee rate it relays.',
     warning: null,
     allowedStatuses: 'any',
     group: 'Configuration',

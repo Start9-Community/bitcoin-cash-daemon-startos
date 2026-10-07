@@ -59,7 +59,7 @@ export const deleteMainnetData = sdk.Action.withInput(
       mounts,
       'delete-mainnet-data',
       async (sub) => {
-        await sub.exec(['rm', '-rf', `${rootDir}/mainnet`], undefined, null)
+        await sub.exec(['rm', '-rf', `${rootDir}/mainnet`], { timeout: null })
       },
     )
 

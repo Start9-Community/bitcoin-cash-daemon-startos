@@ -92,12 +92,14 @@ export const nodeSettings = sdk.Action.withInput(
       utxocachemaxsize: input.utxocachemaxsize,
       dbflushinterval: input.dbflushinterval,
     })
+    const pruneDepth =
+      input.prune && input.prune > 0 ? Math.max(input.prune, 288) : 0
     await storeJson.merge(effects, {
-      pruneDepth:
-        input.prune && input.prune > 0 ? Math.max(input.prune, 288) : 0,
+      pruneDepth,
       txindexCatchupPending,
       addrindexCatchupPending,
     })
+    if (pruneDepth !== (store?.pruneDepth ?? 0)) await effects.restart()
 
     if (fastSyncUsed && input.txindex) {
       return {

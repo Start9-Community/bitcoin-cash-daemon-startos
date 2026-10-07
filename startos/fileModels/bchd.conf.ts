@@ -16,20 +16,8 @@ const ini01 = z.union([
     return t === '1' || t === 'true' ? 1 : 0
   }),
 ])
-const iniStringArray = z
-  .union([z.array(z.string()), z.string().transform((s) => [s])])
-  .optional()
-  .catch(undefined)
 
-export const ONLYNET_VALUES = {
-  ipv4: 'IPv4',
-  ipv6: 'IPv6',
-  onion: 'Tor (.onion)',
-} as const
-export type OnlynetKey = keyof typeof ONLYNET_VALUES
-export const ALL_ONLYNETS = Object.keys(ONLYNET_VALUES) as OnlynetKey[]
-
-export const shape = z.object({
+export const shape = z.looseObject({
   txindex: ini01.catch(1),
   addrindex: ini01.catch(0),
   fastsync: ini01.catch(0),
@@ -44,7 +32,6 @@ export const shape = z.object({
   utxocachemaxsize: iniNumber.catch(1024),
   dbflushinterval: iniNumber.catch(1800),
   maxpeers: iniNumber.catch(125),
-  onlynet: iniStringArray,
   excessiveblocksize: iniNumber.catch(32000000),
   minrelaytxfee: z
     .union([z.string().transform(Number), z.number()])
@@ -64,13 +51,13 @@ export const fullConfigSpec = sdk.InputSpec.of({
   txindex: sdk.Value.toggle({
     name: 'Transaction Index',
     description:
-      'Build a full transaction index (look up any transaction by its txid). Required by Fulcrum and most block explorers. Light to build — kept in lockstep with block sync. Cannot be enabled with pruning or Fast Sync.',
+      'Lets BCHD look up any transaction by its txid. Fulcrum and the BCH Explorer need it. Turned off whenever Prune Depth is set or Fast Sync is on, and unavailable on a data directory that Fast Sync has been used on.',
     default: true,
   }),
   addrindex: sdk.Value.toggle({
     name: 'Address Index',
     description:
-      'Build the address index so BCHD can answer "all transactions for an address" queries directly (gRPC getAddressTransactions, etc.). This is the slow part of initial sync (upstream bchd issue #219) and can turn a 1-2 day sync into weeks — leave it OFF unless a consumer queries addresses straight from BCHD. Fulcrum and most explorers build their own address index and do NOT need this. Requires Transaction Index. Enabling it later rebuilds the index from genesis (a one-time catch-up).',
+      'Lets BCHD answer "all transactions for an address" queries itself (the searchrawtransactions RPC and gRPC address queries). It is the slow part of initial sync (upstream bchd issue #219), so leave it off unless something queries addresses straight from BCHD; Fulcrum and the BCH Explorer do not. Requires Transaction Index. Turning it on later rebuilds the index from genesis.',
     default: false,
   }),
   fastsync: sdk.Value.toggle({
@@ -97,7 +84,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   grpcEnabled: sdk.Value.toggle({
     name: 'gRPC API',
     description:
-      'Enable the gRPC API on port 8335. Provides modern API access and pub/sub notifications.',
+      'Serves the gRPC API on the gRPC interface, with compact block filters and pub/sub notifications. Turn it off if nothing connects to it.',
     default: true,
   }),
   dbcachesize: sdk.Value.number({
@@ -114,7 +101,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   utxocachemaxsize: sdk.Value.number({
     name: 'UTXO Cache (MiB)',
     description:
-      'Maximum RAM allocated to the in-memory UTXO set cache. Larger values eliminate UTXO disk I/O during IBD, which is one of the main sync bottlenecks. The BCH UTXO set is approximately 1–2 GiB; setting this to 2048 on a machine with 8+ GB RAM eliminates most UTXO I/O. BCHD default: 450 MiB.',
+      "Memory for the in-memory UTXO cache. A larger cache means fewer disk reads and writes during initial sync, at the cost of RAM. BCHD's own default is 450 MiB.",
     required: true,
     default: 1024,
     min: 100,
@@ -125,7 +112,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   dbflushinterval: sdk.Value.number({
     name: 'Database Flush Interval',
     description:
-      'Seconds between database flushes. BCHD batches writes to its bolt key-value store for performance. Lower values flush more often (safer but slower), higher values batch more (faster but risk data on crash).',
+      'Seconds between database flushes. Lower values flush more often, so less is lost if the node stops uncleanly, at the cost of more disk writes; higher values batch more writes together.',
     required: true,
     default: 1800,
     min: 60,
@@ -136,7 +123,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   }),
   maxpeers: sdk.Value.number({
     name: 'Max Peers',
-    description: 'Maximum number of inbound and outbound peer connections.',
+    description: 'Counts inbound and outbound connections together.',
     required: true,
     default: 125,
     min: 0,
@@ -144,19 +131,10 @@ export const fullConfigSpec = sdk.InputSpec.of({
     integer: true,
     units: null,
   }),
-  onlynet: sdk.Value.multiselect({
-    name: 'Allowed Networks',
-    description:
-      'Restrict outbound peer connections to selected network types. Leave all selected to allow all networks.',
-    default: ALL_ONLYNETS,
-    values: ONLYNET_VALUES,
-    minLength: 1,
-    maxLength: null,
-  }),
   onionOnly: sdk.Value.toggle({
     name: 'Onion-Only Mode',
     description:
-      'Force peer connections to Tor only (equivalent to onlynet=onion). Disabled by default so Tor and clearnet can coexist.',
+      'Send every outbound connection through Tor, clearnet peers and peer discovery included, and advertise no clearnet address. Needs Tor Routing on.',
     default: false,
   }),
   peerbloomfilters: sdk.Value.toggle({
@@ -174,8 +152,7 @@ export const fullConfigSpec = sdk.InputSpec.of({
   torEnabled: sdk.Value.toggle({
     name: 'Tor Routing',
     description:
-      'Route all outbound connections through the Tor network for enhanced privacy. ' +
-      'Requires the Tor package to be installed and running. For faster IBD, Tor proxying is applied after initial sync.',
+      'Lets BCHD reach .onion peers through the Tor service, which must be installed and running. Clearnet peers still connect directly unless Onion-Only Mode is on.',
     default: true,
   }),
   torIsolation: sdk.Value.toggle({
@@ -187,16 +164,16 @@ export const fullConfigSpec = sdk.InputSpec.of({
   advertiseClearnetInbound: sdk.Value.toggle({
     name: 'Advertise Clearnet Inbound',
     description:
-      'Publish your public IPv4 and IPv6 clearnet endpoints for inbound peers. Respects the Allowed Networks setting — a network excluded by onlynet (or by Onion-Only Mode) is never advertised. Disabled by default for privacy.',
+      'Publish your public IPv4 and IPv6 clearnet endpoints for inbound peers. Not advertised in Onion-Only Mode. Disabled by default for privacy.',
     default: false,
   }),
   excessiveblocksize: sdk.Value.number({
     name: 'Excessive Block Size',
     description:
-      'Max accepted block size in bytes. BCHD default: 32000000 (32 MB).',
+      "Largest block, in bytes, that BCHD accepts. The minimum is BCHD's default, 32000000 (32 MB).",
     required: false,
     default: null,
-    min: 1000000,
+    min: 32000000,
     max: null,
     integer: true,
     units: 'bytes',
