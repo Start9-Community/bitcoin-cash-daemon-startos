@@ -69,6 +69,7 @@ export const generateRpcCredential = sdk.Action.withInput(
             copyable: true,
             qr: false,
             masked: false,
+            launchable: false,
           },
           {
             type: 'single' as const,
@@ -78,6 +79,7 @@ export const generateRpcCredential = sdk.Action.withInput(
             copyable: true,
             qr: false,
             masked: true,
+            launchable: false,
           },
         ],
       },
