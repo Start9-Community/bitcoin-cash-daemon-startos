@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.22.2:4',
+  version: '0.22.2:5',
   releaseNotes: {
     en_US:
-      'Restarting BCHD while it is still starting stops every process of the previous run.',
+      'Updated the package runtime for more reliable startup and health checks. Added outbound-traffic privacy guidance.',
     es_ES:
-      'Reiniciar BCHD mientras aún se está iniciando detiene todos los procesos de la ejecución anterior.',
+      'Se actualizó el entorno de ejecución del paquete para mejorar el inicio y las comprobaciones de estado. Se añadieron recomendaciones de privacidad para el tráfico saliente.',
     de_DE:
-      'Ein Neustart von BCHD, während es noch startet, beendet alle Prozesse des vorherigen Laufs.',
+      'Die Paketlaufzeit wurde für einen zuverlässigeren Start und zuverlässigere Zustandsprüfungen aktualisiert. Hinweise zum Datenschutz bei ausgehendem Datenverkehr wurden ergänzt.',
     pl_PL:
-      'Ponowne uruchomienie BCHD w trakcie uruchamiania zatrzymuje wszystkie procesy poprzedniego uruchomienia.',
+      'Zaktualizowano środowisko wykonawcze pakietu, poprawiając niezawodność uruchamiania i kontroli stanu. Dodano wskazówki dotyczące prywatności ruchu wychodzącego.',
     fr_FR:
-      "Redémarrer BCHD pendant son démarrage arrête tous les processus de l'exécution précédente.",
+      'Mise à jour de l’environnement d’exécution du paquet pour fiabiliser le démarrage et les contrôles d’état. Ajout de conseils de confidentialité pour le trafic sortant.',
   },
   migrations: {
     up: async () => {},
