@@ -92,6 +92,10 @@ selected network.
 | chipnet  | 48334          | 48333 | 48335      |
 | regtest  | 18444          | 18445 | 18446      |
 
+## Outbound traffic
+
+If you publish the **Peer** interface through StartTunnel to keep your home IP private, send BCHD's outbound traffic through that tunnel too. Connections BCHD opens itself to clearnet peers otherwise leave through your home router, so those peers see your home IP. While BCHD connects through Tor only, this doesn't apply. If you use the tunnel for another reason, such as a port your router can't forward, there is nothing to change.
+
 ## Limitations
 
 - Downgrading from package `0.22.2:3` to an earlier package is blocked to preserve Onion-Only Mode. To return to an earlier package, restore a backup made with it.
