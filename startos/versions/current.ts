@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.22.2:4',
+  version: '0.22.2:5',
   releaseNotes: {
     en_US:
-      'Restarting BCHD while it is still starting stops every process of the previous run.',
+      'The instructions cover keeping your home IP private when you publish BCHD through StartTunnel.',
     es_ES:
-      'Reiniciar BCHD mientras aún se está iniciando detiene todos los procesos de la ejecución anterior.',
+      'Las instrucciones explican cómo mantener privada tu IP doméstica cuando publicas BCHD a través de StartTunnel.',
     de_DE:
-      'Ein Neustart von BCHD, während es noch startet, beendet alle Prozesse des vorherigen Laufs.',
+      'Die Anleitung erklärt, wie Ihre Heim-IP-Adresse privat bleibt, wenn Sie BCHD über StartTunnel veröffentlichen.',
     pl_PL:
-      'Ponowne uruchomienie BCHD w trakcie uruchamiania zatrzymuje wszystkie procesy poprzedniego uruchomienia.',
+      'Instrukcje wyjaśniają, jak zachować prywatność domowego adresu IP, gdy publikujesz BCHD przez StartTunnel.',
     fr_FR:
-      "Redémarrer BCHD pendant son démarrage arrête tous les processus de l'exécution précédente.",
+      'Les instructions expliquent comment garder votre IP personnelle privée lorsque vous publiez BCHD via StartTunnel.',
   },
   migrations: {
     up: async () => {},
