@@ -4,15 +4,15 @@ export const current = VersionInfo.of({
   version: '0.22.2:5',
   releaseNotes: {
     en_US:
-      'Updated the package runtime for more reliable startup and health checks. Added outbound-traffic privacy guidance.',
+      'The instructions cover keeping your home IP private when you publish BCHD through StartTunnel.',
     es_ES:
-      'Se actualizó el entorno de ejecución del paquete para mejorar el inicio y las comprobaciones de estado. Se añadieron recomendaciones de privacidad para el tráfico saliente.',
+      'Las instrucciones explican cómo mantener privada tu IP doméstica cuando publicas BCHD a través de StartTunnel.',
     de_DE:
-      'Die Paketlaufzeit wurde für einen zuverlässigeren Start und zuverlässigere Zustandsprüfungen aktualisiert. Hinweise zum Datenschutz bei ausgehendem Datenverkehr wurden ergänzt.',
+      'Die Anleitung erklärt, wie Ihre Heim-IP-Adresse privat bleibt, wenn Sie BCHD über StartTunnel veröffentlichen.',
     pl_PL:
-      'Zaktualizowano środowisko wykonawcze pakietu, poprawiając niezawodność uruchamiania i kontroli stanu. Dodano wskazówki dotyczące prywatności ruchu wychodzącego.',
+      'Instrukcje wyjaśniają, jak zachować prywatność domowego adresu IP, gdy publikujesz BCHD przez StartTunnel.',
     fr_FR:
-      'Mise à jour de l’environnement d’exécution du paquet pour fiabiliser le démarrage et les contrôles d’état. Ajout de conseils de confidentialité pour le trafic sortant.',
+      'Les instructions expliquent comment garder votre IP personnelle privée lorsque vous publiez BCHD via StartTunnel.',
   },
   migrations: {
     up: async () => {},
