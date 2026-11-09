@@ -85,7 +85,7 @@ export const nodeSettings = sdk.Action.withInput(
       txindex: txindex ? 1 : 0,
       addrindex: addrindex ? 1 : 0,
       fastsync: fastsync ? 1 : 0,
-      grpclisten: input.grpcEnabled ? '0.0.0.0:8335' : '',
+      grpclisten: input.grpcEnabled ? ':8335' : '',
       nopeerbloomfilters: input.peerbloomfilters ? 0 : 1,
       nocfilters: input.cfindex ? 0 : 1,
       dbcachesize: input.dbcachesize,
