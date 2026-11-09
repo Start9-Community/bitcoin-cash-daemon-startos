@@ -94,7 +94,7 @@ export const autoconfig = sdk.Action.withInput(
     }
 
     if (input.grpcEnabled !== undefined)
-      confPatch.grpclisten = input.grpcEnabled ? '0.0.0.0:8335' : ''
+      confPatch.grpclisten = input.grpcEnabled ? ':8335' : ''
     if (input.cfindex !== undefined)
       confPatch.nocfilters = input.cfindex ? 0 : 1
     if (input.peerbloomfilters !== undefined)

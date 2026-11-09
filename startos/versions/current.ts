@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.22.2:5',
+  version: '0.22.2:6',
   releaseNotes: {
     en_US:
-      'The instructions cover keeping your home IP private when you publish BCHD through StartTunnel.',
+      "Peers and RPC and gRPC clients can now connect to BCHD over the server's IPv6 addresses.",
     es_ES:
-      'Las instrucciones explican cómo mantener privada tu IP doméstica cuando publicas BCHD a través de StartTunnel.',
+      'Los pares y los clientes RPC y gRPC ahora pueden conectarse a BCHD a través de las direcciones IPv6 del servidor.',
     de_DE:
-      'Die Anleitung erklärt, wie Ihre Heim-IP-Adresse privat bleibt, wenn Sie BCHD über StartTunnel veröffentlichen.',
+      'Peers sowie RPC- und gRPC-Clients können sich jetzt über die IPv6-Adressen des Servers mit BCHD verbinden.',
     pl_PL:
-      'Instrukcje wyjaśniają, jak zachować prywatność domowego adresu IP, gdy publikujesz BCHD przez StartTunnel.',
+      'Peery oraz klienci RPC i gRPC mogą teraz łączyć się z BCHD przez adresy IPv6 serwera.',
     fr_FR:
-      'Les instructions expliquent comment garder votre IP personnelle privée lorsque vous publiez BCHD via StartTunnel.',
+      'Les pairs et les clients RPC et gRPC peuvent désormais se connecter à BCHD via les adresses IPv6 du serveur.',
   },
   migrations: {
     up: async () => {},
