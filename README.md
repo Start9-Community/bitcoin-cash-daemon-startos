@@ -35,7 +35,7 @@
 
 ## Image and Container Runtime
 
-One image, built here from upstream source. Because BCHD is pure Go, the build cross-compiles natively for every target rather than emulating one — which is why this package can offer riscv64 where most cannot.
+One image, built here from the upstream release tag's source archive, which must match the SHA-256 pinned in the `Dockerfile`. Because BCHD is pure Go, the build cross-compiles natively for every target rather than emulating one — which is why this package can offer riscv64 where most cannot.
 
 | Property      | Value                                                             |
 | ------------- | ----------------------------------------------------------------- |

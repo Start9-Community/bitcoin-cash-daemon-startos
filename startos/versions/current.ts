@@ -1,18 +1,18 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '0.22.2:6',
+  version: '0.22.2:7',
   releaseNotes: {
     en_US:
-      "Peers and RPC and gRPC clients can now connect to BCHD over the server's IPv6 addresses.",
+      'Requires StartOS 0.4.2 or later. The package now verifies the BCHD source it builds against a pinned checksum.',
     es_ES:
-      'Los pares y los clientes RPC y gRPC ahora pueden conectarse a BCHD a través de las direcciones IPv6 del servidor.',
+      'Requiere StartOS 0.4.2 o posterior. El paquete ahora verifica el código fuente de BCHD que compila con una suma de comprobación fijada.',
     de_DE:
-      'Peers sowie RPC- und gRPC-Clients können sich jetzt über die IPv6-Adressen des Servers mit BCHD verbinden.',
+      'Erfordert StartOS 0.4.2 oder neuer. Das Paket prüft den gebauten BCHD-Quellcode jetzt gegen eine festgelegte Prüfsumme.',
     pl_PL:
-      'Peery oraz klienci RPC i gRPC mogą teraz łączyć się z BCHD przez adresy IPv6 serwera.',
+      'Wymaga StartOS 0.4.2 lub nowszego. Pakiet weryfikuje teraz budowany kod źródłowy BCHD względem przypiętej sumy kontrolnej.',
     fr_FR:
-      'Les pairs et les clients RPC et gRPC peuvent désormais se connecter à BCHD via les adresses IPv6 du serveur.',
+      'Nécessite StartOS 0.4.2 ou ultérieur. Le paquet vérifie désormais le code source de BCHD qu’il compile à l’aide d’une somme de contrôle fixée.',
   },
   migrations: {
     up: async () => {},
