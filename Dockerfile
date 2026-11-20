@@ -4,6 +4,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS bchd-build
 
 ARG BCHD_VERSION=v0.22.2
+ARG BCHD_SHA256=928835c5ad0b19bd4a9aacb2b597ff7815b376989f43430a3c81ef28b3f2aa2a
 # Redeclared without a default on purpose: giving a predefined build arg a value
 # shadows the one buildx injects, so `ARG TARGETARCH=amd64` would pin every target
 # to an amd64 binary.
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /build
 RUN curl -fL --retry 6 --retry-delay 5 --retry-all-errors \
     -o /tmp/bchd.tar.gz "https://github.com/gcash/bchd/archive/refs/tags/${BCHD_VERSION}.tar.gz" && \
+    echo "${BCHD_SHA256}  /tmp/bchd.tar.gz" | sha256sum -c - && \
     mkdir -p /build/bchd && \
     tar -xzf /tmp/bchd.tar.gz --strip-components=1 -C /build/bchd && \
     rm -f /tmp/bchd.tar.gz
