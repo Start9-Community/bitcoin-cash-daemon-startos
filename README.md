@@ -54,11 +54,12 @@ The image also ships `bchctl` and `gencerts`, which the package uses for its hea
 
 ## Volume and Data Layout
 
-One volume, holding the chain and everything else.
+Two volumes: `main` holds the chain and everything else, and `public` holds only what dependent services read.
 
-| Volume | Mount Point | Purpose                                                        |
-| ------ | ----------- | -------------------------------------------------------------- |
-| `main` | `/data`     | Blockchain, chainstate, indexes, config, credentials, TLS keys |
+| Volume   | Mount Point | Purpose                                                        |
+| -------- | ----------- | -------------------------------------------------------------- |
+| `main`   | `/data`     | Blockchain, chainstate, indexes, config, credentials, TLS keys |
+| `public` | —           | `rpc/rpc.json`, for dependents to mount read-only              |
 
 | Path                       | Written by                 | Holds                                      |
 | -------------------------- | -------------------------- | ------------------------------------------ |
@@ -74,18 +75,21 @@ The volume is marked NoCOW (`chattr +C`) on first start. That matters on btrfs, 
 
 ## File Models
 
-Two models, and the division between them is not arbitrary: `bchd.conf` holds what upstream considers configuration, `store.json` holds what only StartOS knows.
+Three models, and the division between them is not arbitrary: `bchd.conf` holds what upstream considers configuration, `store.json` holds what only StartOS knows, and `rpc.json` holds what dependents read.
 
 | File         | Format | Modelled                | Written by                  |
 | ------------ | ------ | ----------------------- | --------------------------- |
 | `bchd.conf`  | INI    | Yes — `FileHelper.ini`  | Init and the config actions |
 | `store.json` | JSON   | Yes — `FileHelper.json` | Init, actions, and `main`   |
+| `rpc.json`   | JSON   | Yes — `FileHelper.json` | Init, from `store.json`     |
 
 **`bchd.conf`** carries the index toggles, cache sizes, peer limits, filter settings, and relay policy. A hand edit is not rejected, but it is not authoritative either: the package re-reads the file each start and translates it into flags, and any action that touches a setting rewrites its key.
 
 INI values come back as **strings**, which the model normalizes: `"0"`/`"1"`/`"true"` all coerce to a numeric `0`/`1`. Without that, a flag set to `0` would fail a numeric comparison and silently fall through to its default — meaning a setting could not be turned off at all.
 
 **`store.json`** carries what has no place in BCHD's own config: the selected network, the RPC username and password, the Tor preferences, the prune depth, the advertised external addresses, and several one-shot flags (`reindexChainstate`, `fastSyncUsed`, the per-index catch-up markers). `main` clears the reindex flag as it consumes it, so a reindex happens once rather than on every start.
+
+**`rpc/rpc.json`** on the `public` volume is a copy of four `store.json` fields — `network`, `fullySynced`, `rpcUser`, `rpcPassword` — kept current by an init handler that watches `store.json`. Dependents (Fulcrum BCH, BCH Explorer, the mining pools) mount `public`'s `rpc/` read-only to learn the chain and the login, so they never see `main`.
 
 `rpc.cert` and `rpc.key` are generated, not modelled. They are created on first start only if absent, so they persist across restarts and travel in the backup — a client that pinned the certificate keeps working.
 
@@ -188,7 +192,7 @@ Excessive block size (at least BCHD's own floor and default, 32000000) and minim
 
 ### Credentials — two actions
 
-**BCHD accepts exactly one RPC username and password** (`--rpcuser`/`--rpcpass`), so the package stores one pair. It is what the node authenticates with, what the health checks use, and what dependent packages read from `store.json` when they start.
+**BCHD accepts exactly one RPC username and password** (`--rpcuser`/`--rpcpass`), so the package stores one pair. It is what the node authenticates with, what the health checks use, and what dependent packages read from `public`'s `rpc/rpc.json`.
 
 **View RPC Credentials** shows the username, password (masked), and the RPC port of the network in use, each as its own copyable field. **Change RPC Credentials** replaces the pair with a username the user enters (letters and digits) and a new random password, shows both, and restarts BCHD if it is running. It warns before replacing an existing pair; the old password cannot be recovered.
 
@@ -253,6 +257,8 @@ The `main` volume is copied, with three exclusions:
 
 So the backup is the **configuration**, not the chain: `bchd.conf`, `store.json` with its credentials and network selection, and the TLS certificate and key.
 
+The `public` volume is not backed up: it is rewritten from `store.json` on every init, restore included.
+
 **A restored node re-syncs from scratch.** That is the deliberate trade — a backup measured in kilobytes instead of hundreds of gigabytes, at the cost of a full initial sync after a restore. Anything depending on this node's RPC will be unusable until that sync completes.
 
 The TLS certificate surviving is what stops a restore from breaking clients that pinned it, and the RPC credentials surviving is what stops dependent packages from needing reconfiguration.
@@ -286,9 +292,11 @@ subcontainers:
   - stunnel-sub # the plaintext RPC proxy
 volumes:
   main: /data
+  public: rpc/rpc.json for dependents; not backed up
 file_models:
   - bchd.conf
   - store.json
+  - rpc.json
   # rpc.cert / rpc.key are generated on first start, not modelled
 startos_managed_env_vars: [] # every setting is passed as a bchd flag
 dependencies:
