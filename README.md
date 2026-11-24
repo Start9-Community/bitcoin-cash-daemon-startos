@@ -75,7 +75,7 @@ The volume is marked NoCOW (`chattr +C`) on first start. That matters on btrfs, 
 
 ## File Models
 
-Three models, and the division between them is not arbitrary: `bchd.conf` holds what upstream considers configuration, `store.json` holds what only StartOS knows, and `rpc.json` holds what dependents read.
+Three models: `bchd.conf` holds what upstream considers configuration, `store.json` holds what only StartOS knows, and `rpc.json` holds what dependents read.
 
 | File         | Format | Modelled                | Written by                  |
 | ------------ | ------ | ----------------------- | --------------------------- |
