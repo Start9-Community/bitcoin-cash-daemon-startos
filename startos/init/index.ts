@@ -12,11 +12,11 @@ export const init = sdk.setupInit(
   restoreInit,
   versionGraph,
   seedFiles,
+  publishRpc,
   setInterfaces,
   actions,
   dependencies,
   watchHosts,
-  publishRpc,
 )
 
 export const uninit = sdk.setupUninit(versionGraph)
